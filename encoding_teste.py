@@ -43,4 +43,4 @@ def processar_rosto_final(caminho_input):
     except Exception as e:
         print(f"\n❌ Erro persistente: {e}")
 
-processar_rosto_final("fotos_teste/foto_joao1.jpg")
+processar_rosto_final("fotos_teste/foto_joao2.jpg")
