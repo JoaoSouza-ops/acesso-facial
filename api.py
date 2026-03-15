@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Form
 import face_recognition
 import cv2
 import numpy as np
@@ -20,6 +20,7 @@ except Exception as e:
 
 @app.post("/verificar-acesso")
 async def verificar_acesso(arquivo: UploadFile = File(...)):
+
     print(f"\n[CATRACA] Foto recebida: {arquivo.filename}")
     
     if indice_faiss is None:
@@ -72,3 +73,50 @@ async def verificar_acesso(arquivo: UploadFile = File(...)):
 
     except Exception as e:
         return {"sucesso": False, "mensagem": f"Erro ao processar: {e}"}
+    
+@app.post("/cadastrar")
+async def cadastrar_aluno(nome: str = Form(...), arquivo: UploadFile = File(...)):
+    global indice_faiss, dicionario_nomes
+    
+    print(f"\n[SECRETARIA] Iniciando cadastro para: {nome}")
+    
+    if indice_faiss is None:
+        return {"sucesso": False, "mensagem": "Erro: Banco de dados offline."}
+
+    try:
+        # 1. Tratamento da foto recebida
+        conteudo = await arquivo.read()
+        nparr = np.frombuffer(conteudo, np.uint8)
+        img_bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+        if img_bgr is None:
+            return {"sucesso": False, "mensagem": "Arquivo de imagem inválido."}
+
+        img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+        
+        # 2. Extração da Biometria
+        encodings = face_recognition.face_encodings(img_rgb)
+        if len(encodings) == 0:
+            return {"sucesso": False, "mensagem": "Nenhum rosto detectado na foto. Tente novamente."}
+            
+        novo_vetor = encodings[0]
+        
+        # 3. Inserindo no FAISS dinamicamente
+        vetor_np = np.array([novo_vetor], dtype=np.float32)
+        indice_faiss.add(vetor_np)
+        
+        # 4. Atualizando nosso mapa de nomes
+        # O ID do novo aluno será o número total de alunos - 1
+        novo_id = indice_faiss.ntotal - 1 
+        dicionario_nomes[str(novo_id)] = nome
+        
+        # 5. Salvando as alterações no disco (Para não perder se reiniciar o PC)
+        faiss.write_index(indice_faiss, "banco_biometrico.index")
+        with open("nomes_alunos.json", "w", encoding="utf-8") as f:
+            json.dump(dicionario_nomes, f, ensure_ascii=False, indent=4)
+            
+        print(f"[SECRETARIA] ✅ {nome} cadastrado com sucesso com ID {novo_id}!")
+        return {"sucesso": True, "mensagem": f"Aluno(a) {nome} cadastrado(a) com sucesso!"}
+
+    except Exception as e:
+        return {"sucesso": False, "mensagem": f"Erro no cadastro: {e}"}
