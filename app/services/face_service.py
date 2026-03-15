@@ -8,15 +8,19 @@ class LowQualityImageError(Exception):
     pass
 
 def extract_face_vector(image_bytes: bytes) -> np.ndarray:
-    """Recebe JPEG em bytes. Retorna vetor float32[128]."""
     try:
         pil_image = Image.open(io.BytesIO(image_bytes)).convert('RGB')
     except Exception as e:
         raise ValueError(f'Imagem inválida: {e}')
     
+    # --- NOVO: Validação de Brilho Médio ---
     img_array = np.array(pil_image)
+    brilho_medio = np.mean(img_array)
+    if brilho_medio < 50: # Escala de 0 a 255. 30 é bem escuro.
+        raise LowQualityImageError(f'Foto muito escura (Brilho: {brilho_medio:.1f}). Melhore a iluminação.')
+    # ---------------------------------------
+
     face_locations = face_recognition.face_locations(img_array, model='hog')
-    
     if not face_locations:
         raise ValueError('Nenhuma face detectada na imagem.')
         
@@ -24,9 +28,7 @@ def extract_face_vector(image_bytes: bytes) -> np.ndarray:
     if not encodings:
         raise LowQualityImageError('Qualidade insuficiente para extração do vetor.')
         
-    vector = encodings[0].astype(np.float32)
-    assert vector.shape == (128,), f'Shape inesperado: {vector.shape}'
-    return vector
+    return encodings[0].astype(np.float32)
 
 def vector_to_blob(vector: np.ndarray) -> bytes:
     """Serializa vetor float32[128] para bytes (BLOB no SQLite)."""

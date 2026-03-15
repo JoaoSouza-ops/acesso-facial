@@ -12,3 +12,8 @@ __pycache__/
 
 # Ignorar pastas do VS Code
 .vscode/
+
+banco_biometrico.index
+mapa_alunos.json
+__pycache__/
+.pytest_cache/
