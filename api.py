@@ -2,67 +2,73 @@ from fastapi import FastAPI, UploadFile, File
 import face_recognition
 import cv2
 import numpy as np
+import faiss
+import json
 
-app = FastAPI(title="API Catraca Facial - MVP")
+app = FastAPI(title="API Catraca Facial - Enterprise (FAISS)")
 
-print("Carregando o banco de dados...")
+print("Carregando o banco de dados FAISS...")
 try:
-    # Carregamos o seu DNA digital salvo anteriormente
-    encoding_joao_cadastro = np.load("meu_rosto.npy")
-    print("✅ Banco de dados carregado com sucesso (João)")
+    # 1. Carrega o banco vetorial e o mapa de nomes
+    indice_faiss = faiss.read_index("banco_biometrico.index")
+    with open("nomes_alunos.json", "r", encoding="utf-8") as f:
+        dicionario_nomes = json.load(f)
+    print(f"✅ Banco carregado com sucesso! Total de alunos: {indice_faiss.ntotal}")
 except Exception as e:
-    encoding_joao_cadastro = None
-    print(f"❌ Erro ao carregar meu_rosto.npy: {e}")
+    indice_faiss = None
+    print(f"❌ Erro ao carregar o banco de dados: {e}")
 
 @app.post("/verificar-acesso")
 async def verificar_acesso(arquivo: UploadFile = File(...)):
-    # --- NOVO: Raio-X do que está chegando ---
-    print(f"\n[CATRACA] Arquivo recebido da internet: {arquivo.filename}")
+    print(f"\n[CATRACA] Foto recebida: {arquivo.filename}")
     
-    if encoding_joao_cadastro is None:
-        return {"sucesso": False, "mensagem": "Erro interno: Banco de dados não carregado."}
+    if indice_faiss is None:
+        return {"sucesso": False, "mensagem": "Erro interno: Banco de dados inativo."}
 
     try:
+        # Tratamento de imagem blindado (OpenCV)
         conteudo = await arquivo.read()
         nparr = np.frombuffer(conteudo, np.uint8)
         img_bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
         if img_bgr is None:
-            return {"sucesso": False, "mensagem": "Arquivo de imagem inválido."}
+            return {"sucesso": False, "mensagem": "Arquivo inválido."}
 
         img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
         
         altura, largura = img_rgb.shape[:2]
         if largura > 800:
-            proporcao = 800 / largura
-            nova_altura = int(altura * proporcao)
-            img_rgb = cv2.resize(img_rgb, (800, nova_altura))
+            img_rgb = cv2.resize(img_rgb, (800, int(altura * (800 / largura))))
 
         encodings = face_recognition.face_encodings(img_rgb)
         
         if len(encodings) == 0:
-            return {"sucesso": False, "acesso": False, "mensagem": "Nenhum rosto detectado na foto."}
+            return {"sucesso": False, "acesso": False, "mensagem": "Nenhum rosto detectado."}
 
+        # --- A MÁGICA DO FAISS COMEÇA AQUI ---
         encoding_catraca = encodings[0]
-
-        # --- NOVO: Ver a distância matemática real ---
-        resultado = face_recognition.compare_faces([encoding_joao_cadastro], encoding_catraca)[0]
-        # --- A Regra de Negócio Ajustada (O Juiz Rigoroso) ---
-        distancia = face_recognition.face_distance([encoding_joao_cadastro], encoding_catraca)[0]
         
-        # Apertamos a segurança! Só entra se a diferença for 0.50 ou menor
-        limite_de_seguranca = 0.50 
-        resultado = bool(distancia <= limite_de_seguranca)
+        # FAISS exige que a pergunta seja feita em formato de matriz 2D float32
+        vetor_busca = np.array([encoding_catraca], dtype=np.float32)
+        
+        # Busca o 1 rosto mais parecido (k=1) no banco de dados inteiro
+        k = 1
+        distancias, indices = indice_faiss.search(vetor_busca, k)
+        
+        # FAISS retorna a distância ao quadrado. Tiramos a raiz para manter nossa nota de 0 a 1.
+        distancia_real = float(np.sqrt(distancias[0][0]))
+        id_encontrado = str(indices[0][0]) # O JSON salva os IDs como texto
+        
+        print(f"[FAISS] ID mais próximo: {id_encontrado} | Distância: {distancia_real:.2f}")
 
-        print(f"[CATRACA] Distância matemática calculada: {distancia:.2f}")
-
-        if resultado:
-            print("[CATRACA] Veredito: LIBERADO ✅")
-            return {"sucesso": True, "acesso": True, "aluno": "João", "mensagem": "Acesso Liberado!"}
+        # O nosso Limiar de Tolerância (Threshold) rigoroso
+        if distancia_real <= 0.50:
+            nome_aluno = dicionario_nomes.get(id_encontrado, "Desconhecido")
+            print(f"[CATRACA] Veredito: LIBERADO ✅ Bem-vindo(a), {nome_aluno}!")
+            return {"sucesso": True, "acesso": True, "aluno": nome_aluno, "mensagem": f"Acesso Liberado para {nome_aluno}!"}
         else:
-            print("[CATRACA] Veredito: BLOQUEADO ⛔")
+            print("[CATRACA] Veredito: BLOQUEADO ⛔ Intruso.")
             return {"sucesso": True, "acesso": False, "aluno": "Desconhecido", "mensagem": "Acesso Bloqueado!"}
-
 
     except Exception as e:
         return {"sucesso": False, "mensagem": f"Erro ao processar: {e}"}
