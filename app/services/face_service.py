@@ -27,7 +27,10 @@ def extract_face_vector(image_bytes: bytes) -> np.ndarray:
     encodings = face_recognition.face_encodings(img_array, face_locations)
     if not encodings:
         raise LowQualityImageError('Qualidade insuficiente para extração do vetor.')
-        
+
+    vector = encodings[0].astype(np.float32)
+    assert vector.shape == (128,), f'Shape inesperado: {vector.shape}'
+    return vector    
     return encodings[0].astype(np.float32)
 
 def vector_to_blob(vector: np.ndarray) -> bytes:
