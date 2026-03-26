@@ -36,9 +36,9 @@ def extrair_biometria_segura(caminho_foto):
 
 print("--- INICIANDO DIAGNÓSTICO DA CATRACA ---")
 
-encoding_joao_cadastro = extrair_biometria_segura("fotos_teste/foto_joao1.jpg")
+encoding_joao_cadastro = extrair_biometria_segura("fotos_teste/foto_joao2.jpeg")
 encoding_joao_catraca  = extrair_biometria_segura("fotos_teste/foto_joao2.jpg")
-encoding_ryan_catraca  = extrair_biometria_segura("fotos_teste/foto_ryan.jpg")
+encoding_ryan_catraca  = extrair_biometria_segura("fotos_teste/foto_tomholland.jpg")
 
 if encoding_joao_cadastro is not None and encoding_joao_catraca is not None and encoding_ryan_catraca is not None:
     print("\n--- TESTE DE ACESSO ---")
@@ -47,6 +47,6 @@ if encoding_joao_cadastro is not None and encoding_joao_catraca is not None and 
     print(f"João 1 e João 2 são a mesma pessoa? {'Sim (Acesso Liberado)' if resultado_joao else 'Não (Bloqueado)'}")
     
     resultado_ryan = face_recognition.compare_faces([encoding_joao_cadastro], encoding_ryan_catraca)[0]
-    print(f"João 1 e Ryan são a mesma pessoa? {'Sim (Acesso Liberado)' if resultado_ryan else 'Não (Bloqueado)'}")
+    print(f"João 1 e Tom Holland são a mesma pessoa? {'Sim (Acesso Liberado)' if resultado_ryan else 'Não (Bloqueado)'}")
 else:
     print("\n⛔ O teste de acesso foi cancelado porque uma ou mais fotos falharam na leitura.")

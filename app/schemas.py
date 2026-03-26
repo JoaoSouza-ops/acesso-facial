@@ -28,6 +28,12 @@ class EnrollRequest(BaseModel):
     turno: Turno
     vetor_128d: List[float] = Field(..., min_items=128, max_items=128)
 
+class IdentifyRequest(BaseModel):
+    vetor_128d: list[float]
+
+    class Config:
+        from_attributes = True
+
 # --- Schemas de Resposta (Output) ---
 
 class AlunoEnrollado(BaseModel):

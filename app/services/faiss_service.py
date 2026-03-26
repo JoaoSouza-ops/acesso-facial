@@ -8,24 +8,31 @@ import logging
 
 # Caminho do índice (ajuste se necessário)
 INDEX_PATH = "vector_index.index"
-dimension = 128
-index = faiss.IndexFlatL2(dimension)
+DIMENSION = 128
+index = faiss.IndexFlatL2(DIMENSION)
 
-def add_vector(vetor_np, id_aluno):
-    # O erro estava aqui: usaremos 'vetor_np' que é o nome do parâmetro
-    ids_np = np.array([id_aluno]).astype('int64')
-    
-    # Criamos o IndexIDMap se não existir para aceitar IDs personalizados
-    global index
-    if not isinstance(index, faiss.IndexIDMap):
-        index = faiss.IndexIDMap(index)
-    
-    # Adiciona ao motor de busca
-    index.add_with_ids(vetor_np, ids_np)
-    
-    # Salva o backup no disco (Disaster Recovery)
-    faiss.write_index(index, INDEX_PATH)
-    print(f"--- IA: Vetor do aluno {id_aluno} salvo com sucesso! ---")
+
+# Tenta carregar, se não existir, cria um do zero
+if os.path.exists(INDEX_PATH):
+    _index = faiss.read_index(INDEX_PATH)
+    print("--- IA: Índice carregado do disco ---")
+else:
+    # Criamos o FlatL2 e envolvemos no IDMap para aceitar IDs personalizados
+    _index = faiss.IndexIDMap(faiss.IndexFlatL2(DIMENSION))
+    print("--- IA: Novo índice criado do zero ---")
+
+def add_vector(vector: np.ndarray, id_aluno: int):
+    with _lock:
+        # Garante o formato correto (1, 128)
+        vector_np = vector.reshape(1, DIMENSION).astype(np.float32)
+        ids_np = np.array([id_aluno]).astype('int64')
+        
+        # Adiciona ao índice
+        _index.add_with_ids(vector_np, ids_np)
+        
+        # SALVA NO DISCO IMEDIATAMENTE (Importante!)
+        faiss.write_index(_index, INDEX_PATH)
+        print(f"--- IA: Vetor do aluno {id_aluno} salvo fisicamente em {INDEX_PATH} ---")
 
 def load_index():
     """
@@ -70,12 +77,19 @@ def search_vector(vector: np.ndarray, threshold: float = 0.6) -> Tuple[Optional[
     with _lock:
         if _index is None or _index.ntotal == 0:
             return None, float('inf')
+        
+        # O reshape garante que o vetor esteja no formato (1, 128)
         distances, indices = _index.search(vector.reshape(1, DIMENSION).astype(np.float32), k=1)
         dist, idx = float(distances[0][0]), int(indices[0][0])
-        return (idx, dist) if dist <= threshold else (None, dist)
+        
+        # Para CALIBRAÇÃO: Retornamos o ID (se bater o threshold) E a distância real
+        # Se dist > threshold, retornamos None no ID, mas mantemos o valor de dist para estudo
+        id_resultado = idx if dist <= threshold else None
+        return id_resultado, dist
 
 def get_total() -> int:
     return 0 if _index is None else _index.ntotal
+
 
 # Inicializa o índice carregando do disco (se existir) no arranque do módulo
 load_index()
