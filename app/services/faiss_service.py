@@ -4,6 +4,7 @@ import numpy as np
 from typing import Optional, Tuple
 import threading
 import logging
+from app.services import s3_service
 
 
 # Caminho do índice (ajuste se necessário)
@@ -11,6 +12,15 @@ INDEX_PATH = "vector_index.index"
 DIMENSION = 128
 index = faiss.IndexFlatL2(DIMENSION)
 
+# Tenta descarregar do S3 primeiro
+s3_service.descarregar_indice_da_nuvem()
+
+if os.path.exists(INDEX_PATH):
+    index = faiss.read_index(INDEX_PATH)
+    print("Índice FAISS carregado do disco/nuvem.")
+else:
+    index = faiss.IndexFlatL2(DIMENSION)
+    print("Novo índice FAISS criado.")
 
 # Tenta carregar, se não existir, cria um do zero
 if os.path.exists(INDEX_PATH):
@@ -32,6 +42,7 @@ def add_vector(vector: np.ndarray, id_aluno: int):
         
         # SALVA NO DISCO IMEDIATAMENTE (Importante!)
         faiss.write_index(_index, INDEX_PATH)
+        s3_service.carregar_indice_para_nuvem()
         print(f"--- IA: Vetor do aluno {id_aluno} salvo fisicamente em {INDEX_PATH} ---")
 
 def load_index():
