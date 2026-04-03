@@ -1,66 +1,79 @@
+from pydantic import BaseModel, ConfigDict, Field
+from enum import Enum
 from typing import Optional, List
 from datetime import datetime
-from enum import Enum
-from pydantic import BaseModel, Field
 
-# --- Enums para Validação ---
+# ==========================================
+# 1. ENUMS (A blindagem contra dados errados)
+# ==========================================
+class TipoVinculoEnum(str, Enum):
+    GRADUACAO = 'GRADUACAO'
+    POS_GRADUACAO = 'POS_GRADUACAO'
+    PROFESSOR = 'PROFESSOR'
+    FUNCIONARIO = 'FUNCIONARIO'
 
-class TipoVinculo(str, Enum):
-    REGULAR = "Regular"
-    BOLSISTA = "Bolsista"
-    EGRESSO = "Egresso"
-    DOCENTE = "Docente"
-    ADMINISTRATIVO = "Administrativo"
+class TurnoEnum(str, Enum):
+    MANHA = 'MANHA'
+    TARDE = 'TARDE'
+    NOITE = 'NOITE'
+    INTEGRAL = 'INTEGRAL'
 
-class Turno(str, Enum):
-    MATUTINO = "Matutino"
-    VESPERTINO = "Vespertino"
-    NOTURNO = "Noturno"
-    INTEGRAL = "Integral"
+class StatusAcessoEnum(str, Enum):
+    ATIVO = 'ATIVO'
+    BLOQUEADO = 'BLOQUEADO'
 
-# --- Schemas de Requisição (Input) ---
+class BlocoEnum(str, Enum):
+    SEDE = 'SEDE'
+    BLOCO_AULAS = 'BLOCO_AULAS'
 
-class EnrollRequest(BaseModel):
-    matricula: str = Field(..., example="202300123")
-    nome_completo: str = Field(..., example="Ian Araujo dos Santos")
-    curso: str = Field(..., example="Engenharia da Computação")
-    tipo_vinculo: TipoVinculo
-    turno: Turno
-    vetor_128d: List[float] = Field(..., min_items=128, max_items=128)
+class ResultadoAcessoEnum(str, Enum):
+    LIBERADO = 'LIBERADO'
+    BLOQUEADO = 'BLOQUEADO'
+    DESCONHECIDO = 'DESCONHECIDO'
 
-class IdentifyRequest(BaseModel):
-    vetor_128d: list[float]
 
-    class Config:
-        from_attributes = True
+# ==========================================
+# 2. SCHEMAS DE ALUNOS
+# ==========================================
+class AlunoBase(BaseModel):
+    matricula: str = Field(..., max_length=20, description="Matrícula única do aluno")
+    nome_completo: str = Field(..., max_length=255)
+    curso: str = Field(..., max_length=100)
+    tipo_vinculo: TipoVinculoEnum
+    turno: TurnoEnum
+    status_acesso: StatusAcessoEnum = StatusAcessoEnum.ATIVO
 
-# --- Schemas de Resposta (Output) ---
+class AlunoCreate(AlunoBase):
+    pass
+    # Nota: Não incluímos a foto/vetor aqui porque a foto viaja via UploadFile 
+    # no endpoint, e o vetor é gerado pela nossa IA no backend.
 
-class AlunoEnrollado(BaseModel):
+class AlunoResponse(AlunoBase):
     id_aluno: int
-    matricula: str
-    mensagem: str = "Aluno cadastrado com sucesso"
+    criado_em: datetime
+    
+    # from_attributes=True permite que o Pydantic leia objetos do SQLAlchemy
+    model_config = ConfigDict(from_attributes=True) 
 
-class AcessoLiberado(BaseModel):
+
+# ==========================================
+# 3. SCHEMAS DE DISPOSITIVOS E EVENTOS (Dashboard)
+# ==========================================
+class DispositivoResponse(BaseModel):
+    id_dispositivo: int
+    localizacao: str
+    bloco: BlocoEnum
+    is_ativo: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+class EventoAcessoResponse(BaseModel):
     id_evento: int
-    id_aluno: int
-    nome_aluno: str
-    resultado: str = "Liberado"
-    mensagem: str = "Acesso autorizado"
-    ocorrido_em: datetime
+    resultado: ResultadoAcessoEnum
+    codigo_motivo: Optional[str] = None
+    criado_em: datetime
+    # Trazemos os dados do aluno e do dispositivo aninhados para o Dashboard
+    aluno: Optional[AlunoResponse] = None 
+    dispositivo: Optional[DispositivoResponse] = None
 
-class AcessoBloqueado(BaseModel):
-    id_evento: int
-    id_aluno: Optional[int] = None
-    resultado: str = "Negado"
-    codigo_motivo: str 
-    mensagem: str
-    ocorrido_em: datetime
-
-# --- Schemas de Erro ---
-
-class ErroPadrao(BaseModel):
-    detalhe: str = Field(..., example="Ocorreu um erro interno no servidor")
-
-class ErroDuplicata(BaseModel):
-    detalhe: str = Field(..., example="Matrícula já cadastrada no sistema")
+    model_config = ConfigDict(from_attributes=True)

@@ -1,12 +1,23 @@
-# app/database.py
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, DeclarativeBase
-from app.config import get_settings
+from sqlalchemy.orm import sessionmaker, declarative_base
+from app.config import get_settings # Importa a função em vez da variável
+
+# Executa a função para carregar as variáveis do .env
 settings = get_settings()
-engine = create_engine(settings.database_url, connect_args={'check_same_thread': False})
+
+# O SQLAlchemy vai usar o DATABASE_URL que configurámos
+SQLALCHEMY_DATABASE_URL = settings.DATABASE_URL
+
+# Criação do motor de ligação (PostgreSQL)
+engine = create_engine(SQLALCHEMY_DATABASE_URL)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-class Base(DeclarativeBase): pass
+
+Base = declarative_base()
+
 def get_db():
     db = SessionLocal()
-    try: yield db
-    finally: db.close()
+    try:
+        yield db
+    finally:
+        db.close()

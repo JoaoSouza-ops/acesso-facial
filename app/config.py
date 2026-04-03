@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     api_key_device: str
     api_key_enroll: str
     api_key_admin: str
-    database_url: str = 'sqlite:///./acesso_facial.db'
+    DATABASE_URL: str
     faiss_distance_threshold: float = 0.6
     firebase_credentials_path: str = ''
     class Config:
