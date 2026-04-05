@@ -1,7 +1,9 @@
 from fastapi import FastAPI, Depends
 from app.middleware.auth import require_enroll_key, require_admin_key, require_device_key
+from app.routers import access
 
 app = FastAPI(title="Sistema Acesso Facial - Teste Auth")
+app.include_router(access.router)
 
 @app.get("/teste-enroll", dependencies=[Depends(require_enroll_key)])
 async def test_enroll():
