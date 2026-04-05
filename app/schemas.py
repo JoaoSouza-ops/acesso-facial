@@ -150,4 +150,4 @@ class AcessoBloqueado(BaseModel):
     motivo: str
     codigo_motivo: str  # ROSTO_NAO_RECONHECIDO | BLOQUEIO_ADMINISTRATIVO | BLOCO_NAO_PERMITIDO
 
-    model_config = ConfigDict(from_attributes=False) 
+    model_config = ConfigDict(from_attributes=False)

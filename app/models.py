@@ -38,6 +38,7 @@ class Dispositivo(Base):
     is_ativo = Column(Boolean, default=True)
     criado_em = Column(DateTime(timezone=True), server_default=func.now())
 
+
     eventos = relationship("EventoAcesso", back_populates="dispositivo")
 
 

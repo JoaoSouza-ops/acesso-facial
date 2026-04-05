@@ -8,11 +8,12 @@ for tipo, bloco in [
     ('PROFESSOR','SEDE'),('PROFESSOR','BLOCO_AULAS'),
     ('FUNCIONARIO','SEDE'),   # sem BLOCO_AULAS por padrão
 ]:
-    db.add(models.RegrasBlocoVinculo(tipo_vinculo=tipo, bloco=bloco))
+    db.add(models.RegraBlocoVinculo(tipo_vinculo=tipo, bloco=bloco))
 db.add(models.Dispositivo(
-    api_key='hub-dev-device-chave-secreta-123',
+    api_key='hub-dev-device-chave-secreta-001',
     mac_address='00:11:22:33:44:55',
     localizacao='Entrada Principal — Sede',
-    bloco='SEDE', ativo=1
+    bloco='SEDE', is_ativo=True
 ))
 db.commit(); db.close(); print('Seed concluído.')
+

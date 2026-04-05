@@ -25,7 +25,7 @@ def require_device_key(
     disp = db.query(models.Dispositivo).filter(
         models.Dispositivo.api_key == x_api_key_device,
         models.Dispositivo.mac_address == x_device_mac,
-        models.Dispositivo.ativo == 1
+        models.Dispositivo.is_ativo.is_(True)
     ).first()
     if not disp:
         raise HTTPException(status_code=401, detail={
