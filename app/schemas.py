@@ -123,3 +123,31 @@ class ErroDuplicata(BaseModel):
     erro: str
     campo: str
     valor_conflitante: str
+
+   # ==========================================
+# 5. SCHEMAS DA ROTA /access/verify
+# ==========================================
+
+class AcessoLiberado(BaseModel):
+    """
+    Resposta HTTP 200 do POST /access/verify.
+    O ESP32 usa o status 200 para acionar o relé imediatamente.
+    """
+    status: str = "liberado"
+    nome: str
+    matricula: str
+    tipo_vinculo: str
+
+    model_config = ConfigDict(from_attributes=False)
+
+
+class AcessoBloqueado(BaseModel):
+    """
+    Resposta HTTP 403 do POST /access/verify.
+    O campo codigo_motivo é lido pelo ESP32 e pelo app do segurança.
+    """
+    status: str = "bloqueado"
+    motivo: str
+    codigo_motivo: str  # ROSTO_NAO_RECONHECIDO | BLOQUEIO_ADMINISTRATIVO | BLOCO_NAO_PERMITIDO
+
+    model_config = ConfigDict(from_attributes=False) 
