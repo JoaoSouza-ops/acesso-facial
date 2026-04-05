@@ -1,15 +1,21 @@
-from fastapi import FastAPI, File, UploadFile, Form, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query
+from fastapi import FastAPI, File, UploadFile, Form, Depends, HTTPException, WebSocket, WebSocketException, Query, status
 from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
-from typing import List
+from typing import List, Optional
 from app.middleware.auth import require_enroll_key, require_admin_key, require_device_key
 from app.database import get_db, engine
 from app import models, schemas
 from app.services import vision_service
 
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import logging
+
+import json
+import uuid
+
+from datetime import datetime
 
 # Configura o logger interno (substitui os prints soltos)
 logger = logging.getLogger("uvicorn.error")
@@ -60,36 +66,43 @@ class ConnectionManager:
 # Instância global do nosso transmissor
 manager = ConnectionManager()
 
+# 1. O Novo "Segurança" do WebSocket
+async def verify_ws_key(api_key: str = Query(...)):
+    """Verifica a chave de segurança que vem na URL (Query Parameter)"""
+    # 🚨 Substitua pela mesma constante ou lógica de banco que você usa no Header
+    CHAVE_CORRETA = "chave_secreta_admin_123" 
+    
+    if api_key != CHAVE_CORRETA:
+        # Padrão WS_1008 é a forma correta do protocolo WebSocket dizer "Acesso Negado"
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
+    return api_key
 
+# ==========================================
+# WebSocket para o feed em tempo real dos eventos
+# ==========================================
 @app.websocket("/api/v1/ws/feed")
-async def websocket_feed(
-    websocket: WebSocket,
-    token: str = Query(..., description="Token de autenticação do painel"),  # ✅ FIX: autenticação obrigatória
-):
-    # ✅ FIX: valida o token ANTES de aceitar a conexão
-    # Substitua a lógica abaixo pela sua validação real (ex: JWT, chave estática, etc.)
-    VALID_DASHBOARD_TOKENS = {"SEU_TOKEN_SECRETO_AQUI"}  # mova para variável de ambiente
-    if token not in VALID_DASHBOARD_TOKENS:
-        await websocket.close(code=1008)  # 1008 = Policy Violation
-        return
-
+async def websocket_feed(websocket: WebSocket, api_key: str = Depends(verify_ws_key)):
+    # Se chegou aqui, a chave da URL é válida!
     await manager.connect(websocket)
     try:
         while True:
-            # Mantém a conexão aberta escutando o painel
+            # Mantém a conexão viva escutando (mesmo que o cliente não mande nada)
             data = await websocket.receive_text()
-    except WebSocketDisconnect:
+    except Exception as e:
         manager.disconnect(websocket)
-        logger.info("Um painel de segurança foi desconectado.")
 
+
+# ==========================================
+# CADASTRO DE ALUNO (ENROLL)
+# ==========================================
 
 # ==========================================
 # CADASTRO DE ALUNO (ENROLL)
 # ==========================================
 @app.post(
     "/api/v1/access/enroll",
-    response_model=schemas.AlunoResponse,
-    status_code=201,  # ✅ FIX: criação bem-sucedida retorna 201, não 200
+    response_model=schemas.AlunoEnrollado,
+    status_code=201,
     dependencies=[Depends(require_enroll_key)]
 )
 async def enroll_student(
@@ -103,33 +116,32 @@ async def enroll_student(
 ):
     logger.info(f"Iniciando cadastro para matrícula: {matricula}")
 
-    # =====================================================================
-    # 1. TRADUÇÃO DA IMAGEM
-    # =====================================================================
+    # ── 1. Extração do vetor facial ──────────────────────────────────────────
     try:
         foto_bytes = await foto.read()
         vetor_128d = vision_service.extrair_vetor_da_imagem(foto_bytes)
     except ValueError as e:
-        # ✅ FIX: erro causado por dados inválidos do cliente → 422
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
-        # ✅ FIX: erro interno não vaza detalhes para o cliente
         logger.error(f"Falha no vision_service para matrícula {matricula}: {e}")
         raise HTTPException(status_code=500, detail="Falha interna ao processar a imagem.")
 
-    # =====================================================================
-    # 2. SEGURANÇA E PERSISTÊNCIA
-    # =====================================================================
+    # ── 2. Verificação de matrícula duplicada ────────────────────────────────
+    aluno_existente = db.query(models.Aluno).filter(
+        models.Aluno.matricula == matricula
+    ).first()
 
-    # ✅ FIX: idempotência agora retorna 409 explícito em vez de silenciar o conflito
-    aluno_existente = db.query(models.Aluno).filter(models.Aluno.matricula == matricula).first()
     if aluno_existente:
         raise HTTPException(
             status_code=409,
-            detail=f"Matrícula '{matricula}' já está cadastrada no sistema."
+            detail={
+                "erro": "Matrícula já cadastrada no sistema.",
+                "campo": "matricula",
+                "valor_conflitante": matricula,
+            }
         )
 
-    # UNICIDADE BIOMÉTRICA
+    # ── 3. Verificação de unicidade biométrica ───────────────────────────────
     sosia = db.query(models.Aluno).filter(
         models.Aluno.vetor_128d.l2_distance(vetor_128d) < 0.45
     ).first()
@@ -137,10 +149,14 @@ async def enroll_student(
     if sosia:
         raise HTTPException(
             status_code=409,
-            detail=f"Conflito Biométrico: Rosto muito similar ao do(a) aluno(a) '{sosia.nome_completo}'."
+            detail={
+                "erro": f"Conflito biométrico: rosto muito similar ao do aluno '{sosia.nome_completo}'.",
+                "campo": "foto",
+                "valor_conflitante": sosia.matricula,
+            }
         )
 
-    # SALVA TUDO DE UMA VEZ SÓ (ACID)
+    # ── 4. Persistência no banco (ACID) ──────────────────────────────────────
     try:
         novo_aluno = models.Aluno(
             matricula=matricula,
@@ -158,22 +174,35 @@ async def enroll_student(
         logger.error(f"Erro ao persistir aluno {matricula}: {e}")
         raise HTTPException(status_code=500, detail="Erro interno ao salvar o cadastro.")
 
-    return novo_aluno
+    # ── 5. Resposta com header de rastreabilidade ────────────────────────────
+    resposta = schemas.AlunoEnrollado(
+        id_aluno=novo_aluno.id_aluno,
+        matricula=novo_aluno.matricula,
+        nome_completo=novo_aluno.nome_completo,
+    )
 
+    return JSONResponse(
+        status_code=201,
+        content=resposta.model_dump(),
+        headers={"X-Request-ID": str(uuid.uuid4())},
+    )
 
 # ==========================================
 # IDENTIFICAÇÃO FACIAL (CATRACA)
 # ==========================================
-@app.post("/api/v1/access/identify", dependencies=[Depends(require_device_key)])
-def identificar_acesso(request: dict, db: Session = Depends(get_db)):
+@app.post("/api/v1/access/identify")
+async def identificar_acesso(
+    request: dict, 
+    db: Session = Depends(get_db),
+    # 🟢 Pegamos os dados do dispositivo logado para mandar pro Feed!
+    dispositivo = Depends(require_device_key) 
+):
     """
     Recebe um vetor biométrico e decide se o acesso é liberado.
-    Retorna códigos HTTP semânticos que a catraca pode usar diretamente,
-    sem precisar inspecionar o corpo da resposta.
+    Dispara o resultado para o Feed de Segurança em tempo real.
     """
     vetor_input = request.get("vetor_128d")
 
-    # ✅ FIX: valida o payload antes de qualquer coisa
     if not vetor_input:
         raise HTTPException(status_code=422, detail="Campo 'vetor_128d' é obrigatório.")
 
@@ -185,7 +214,6 @@ def identificar_acesso(request: dict, db: Session = Depends(get_db)):
         models.Aluno.vetor_128d.l2_distance(vetor_input).label("distancia")
     ).order_by("distancia").first()
 
-    # ✅ FIX: banco vazio não é 200 — é um estado que a catraca precisa tratar
     if not aluno_mais_proximo:
         raise HTTPException(
             status_code=503,
@@ -195,9 +223,26 @@ def identificar_acesso(request: dict, db: Session = Depends(get_db)):
     aluno, distancia_real = aluno_mais_proximo
     distancia_arredondada = round(distancia_real, 4)
 
-    # ✅ FIX: status codes semânticos — a catraca lê o HTTP status, não o JSON body
+    # 🟢 Base do Payload para o React Native (com dados reais da catraca)
+    payload_ws = {
+        "id": "evt-" + str(datetime.now().timestamp()),
+        "id_dispositivo": dispositivo.id_dispositivo,
+        "localizacao": dispositivo.localizacao,
+        "ocorrido_em": datetime.now().isoformat()
+    }
+
     if distancia_real < 0.45:
-        # Acesso liberado: 200 OK
+        # ==========================================
+        # ACESSO LIBERADO
+        # ==========================================
+        payload_ws.update({
+            "id_aluno": aluno.id_aluno,
+            "nome_aluno": aluno.nome_completo,
+            "resultado": "LIBERADO",
+            "codigo_motivo": "ACESSO_OK"
+        })
+        await manager.broadcast(payload_ws) # 🟢 Dispara pro App
+
         return JSONResponse(
             status_code=200,
             content={
@@ -207,8 +252,19 @@ def identificar_acesso(request: dict, db: Session = Depends(get_db)):
                 "distancia_l2": distancia_arredondada,
             }
         )
+        
     elif distancia_real <= 0.6:
-        # Identificação inconclusiva: 202 Accepted (recebeu, mas não confirmou)
+        # ==========================================
+        # INCONCLUSIVO / DESCONHECIDO
+        # ==========================================
+        payload_ws.update({
+            "id_aluno": None,
+            "nome_aluno": "Desconhecido",
+            "resultado": "DESCONHECIDO",
+            "codigo_motivo": "SIMILARIDADE_BAIXA"
+        })
+        await manager.broadcast(payload_ws) # 🟢 Dispara pro App
+
         raise HTTPException(
             status_code=202,
             detail={
@@ -217,8 +273,19 @@ def identificar_acesso(request: dict, db: Session = Depends(get_db)):
                 "distancia_l2": distancia_arredondada,
             }
         )
+        
     else:
-        # Acesso negado: 401 Unauthorized
+        # ==========================================
+        # ACESSO NEGADO / BLOQUEADO
+        # ==========================================
+        payload_ws.update({
+            "id_aluno": None,
+            "nome_aluno": "Desconhecido",
+            "resultado": "BLOQUEADO",
+            "codigo_motivo": "ROSTO_NAO_RECONHECIDO"
+        })
+        await manager.broadcast(payload_ws) # 🟢 Dispara pro App
+
         raise HTTPException(
             status_code=401,
             detail={
@@ -227,6 +294,82 @@ def identificar_acesso(request: dict, db: Session = Depends(get_db)):
                 "distancia_l2": distancia_arredondada,
             }
         )
+
+# ==========================================
+# ROTAS ADMINISTRATIVAS (Frontend)
+# ==========================================
+
+@app.get("/api/v1/admin/devices")
+def get_devices(db: Session = Depends(get_db)):
+    """Retorna o status real de todas as catracas conectadas no PostgreSQL"""
+    dispositivos = db.query(models.Dispositivo).all()
+    return dispositivos
+
+# 1. LISTAR (GET) - O que já temos
+@app.get("/api/v1/admin/overrides", response_model=list[schemas.OverrideResponse])
+def get_overrides(db: Session = Depends(get_db)):
+    # FIX #2: usa joinedload para que item.aluno.nome_completo chegue preenchido no frontend
+    return db.query(models.OverrideAcesso)\
+        .options(joinedload(models.OverrideAcesso.aluno))\
+        .all()
+
+# Schema para criação de override (evita o 500 por dict sem validação)
+class OverrideCreate(BaseModel):
+    id_aluno: int
+    bloco: str
+    tipo_override: str
+    motivo: Optional[str] = None
+    nome_aluno: Optional[str] = None  # ignorado — nome vem do relacionamento com alunos
+
+
+# 2. CRIAR (POST) - Persistência Real
+@app.post("/api/v1/admin/overrides", status_code=201, response_model=schemas.OverrideResponse)
+def create_override(obj_in: OverrideCreate, db: Session = Depends(get_db)):
+    # 1. Validação do Aluno — obj_in.id_aluno é garantidamente int pelo Pydantic
+    aluno_existe = db.query(models.Aluno).filter(models.Aluno.id_aluno == obj_in.id_aluno).first()
+
+    if not aluno_existe:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Aluno com id_aluno={obj_in.id_aluno} não encontrado. Verifique se o aluno está cadastrado."
+        )
+
+    try:
+        # 2. Criação Simples
+        novo_override = models.OverrideAcesso(
+            id_aluno=obj_in.id_aluno,
+            bloco=obj_in.bloco,
+            tipo_override=obj_in.tipo_override,
+            motivo=obj_in.motivo
+        )
+        db.add(novo_override)
+        db.commit()
+
+        # 3. Busca final com aluno embutido para o response_model serializar corretamente
+        resultado = db.query(models.OverrideAcesso)\
+            .options(joinedload(models.OverrideAcesso.aluno))\
+            .filter(models.OverrideAcesso.id_override == novo_override.id_override)\
+            .first()
+
+        return resultado
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Erro ao criar override: {e}")
+        raise HTTPException(status_code=500, detail="Erro interno ao processar override.")
+
+
+# 3. DELETAR (DELETE) - Remoção por ID
+@app.delete("/api/v1/admin/overrides/{id_override}")
+def delete_override(id_override: int, db: Session = Depends(get_db)):
+    """Remove uma regra de acesso do banco"""
+    target = db.query(models.OverrideAcesso).filter(models.OverrideAcesso.id_override == id_override).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Override não encontrado.")
+    
+    db.delete(target)
+    db.commit()
+    return {"status": "removido", "id": id_override}
 
 
 # ==========================================
@@ -256,3 +399,52 @@ async def test_device(dispositivo=Depends(require_device_key)):
 def list_students(db: Session = Depends(get_db)):
     return db.query(models.Aluno).all()
 
+
+from fastapi import HTTPException # 🟢 Não esqueça de importar o HTTPException no topo!
+
+@app.post("/api/v1/access/test-identify-with-image")
+async def test_identify_image(foto: UploadFile = File(...), db: Session = Depends(get_db)):
+    # 1. Extração
+    foto_bytes = await foto.read()
+    vetor_128d = vision_service.extrair_vetor_da_imagem(foto_bytes)
+    
+    # 2. Busca pgvector
+    sosia = db.query(models.Aluno).filter(
+        models.Aluno.vetor_128d.l2_distance(vetor_128d) < 0.45
+    ).first()
+    
+    # ==========================================
+    # CASO 1: ROSTO DESCONHECIDO
+    # ==========================================
+    if not sosia:
+        payload_erro = {
+            "id": "desc-" + str(datetime.now().timestamp()),
+            "nome_aluno": "Desconhecido",
+            "resultado": "DESCONHECIDO",
+            "localizacao": "Portaria Principal",
+            "codigo_motivo": "FACE_NAO_RECONHECIDA",
+            "ocorrido_em": datetime.now().isoformat()
+        }
+        # Dispara o card AMARELO/VERMELHO no aplicativo do Hericles
+        await manager.broadcast(payload_erro)
+        
+        # 🔴 Retorna ERRO 403 para a catraca não abrir!
+        raise HTTPException(status_code=403, detail=payload_erro)
+
+    # ==========================================
+    # CASO 2: ALUNO ENCONTRADO (LIBERADO)
+    # ==========================================
+    payload_sucesso = {
+        "id": str(sosia.id_aluno),
+        "nome_aluno": sosia.nome_completo,
+        "resultado": "LIBERADO",
+        "localizacao": "Portaria Principal",
+        "codigo_motivo": "ACESSO_OK",
+        "ocorrido_em": datetime.now().isoformat()
+    }
+    
+    # Dispara o card VERDE no aplicativo
+    await manager.broadcast(payload_sucesso)
+    
+    # 🟢 Retorna 200 OK para a catraca abrir!
+    return payload_sucesso
