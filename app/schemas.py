@@ -57,7 +57,30 @@ class AlunoResponse(AlunoBase):
 
 
 # ==========================================
-# 3. SCHEMAS DE DISPOSITIVOS E EVENTOS (Dashboard)
+# 3. SCHEMAS DE OVERRIDES
+# ==========================================
+class AlunoEmOverride(BaseModel):
+    """Subconjunto do aluno embutido na resposta de override (evita expor vetor biométrico)."""
+    id_aluno: int
+    nome_completo: str
+    matricula: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+class OverrideResponse(BaseModel):
+    id_override: int
+    id_aluno: int
+    bloco: str
+    tipo_override: str
+    motivo: Optional[str] = None
+    criado_em: datetime
+    aluno: Optional[AlunoEmOverride] = None  # preenchido pelo joinedload no backend
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ==========================================
+# 4. SCHEMAS DE DISPOSITIVOS E EVENTOS (Dashboard)
 # ==========================================
 class DispositivoResponse(BaseModel):
     id_dispositivo: int
@@ -77,3 +100,26 @@ class EventoAcessoResponse(BaseModel):
     dispositivo: Optional[DispositivoResponse] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class AlunoEnrollado(BaseModel):
+    """
+    Resposta de sucesso do POST /access/enroll (HTTP 201).
+    Contém apenas o necessário para o app confirmar o cadastro.
+    """
+    id_aluno: int
+    matricula: str
+    nome_completo: str
+    mensagem: str = "Aluno cadastrado com sucesso. Vetor facial indexado no banco."
+
+    model_config = ConfigDict(from_attributes=False)
+
+
+class ErroDuplicata(BaseModel):
+    """
+    Resposta de conflito de matrícula ou biométrico (HTTP 409).
+    Formato definido pelo contrato OpenAPI v1.2.0.
+    """
+    erro: str
+    campo: str
+    valor_conflitante: str
