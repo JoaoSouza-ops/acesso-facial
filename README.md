@@ -311,7 +311,8 @@ Projeto desenvolvido como trabalho universitário para a **ExpoTech**.
 Colaboradores identificados nas branches do repositório:
 - **João** — Módulo de IA (face_service, vision_service, FAISS)
 - **Ian** — Backend principal (rotas, banco de dados, RBAC)
-- **Hericles** — Dashboard / Frontend (consumidor do WebSocket)
+- **Hericles e Julia** — Dashboard / Frontend (consumidor do WebSocket)
+- **Gleice** - Modelagem de Dados e BD
 
 ---
 
