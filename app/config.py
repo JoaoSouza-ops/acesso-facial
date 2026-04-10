@@ -6,7 +6,8 @@ class Settings(BaseSettings):
     api_key_enroll: str
     api_key_admin: str
     DATABASE_URL: str
-    faiss_distance_threshold: float = 0.6
+    THRESHOLD_DUPLICATA: float = 0.45   # usado no enroll (detectar sósias)
+    THRESHOLD_ACESSO: float = 0.60      # usado no verify (reconhecer na catraca)
     firebase_credentials_path: str = ''
     class Config:
         env_file = '.env'

@@ -1,3 +1,4 @@
+from app.config import get_settings
 from fastapi import FastAPI, File, UploadFile, Form, Depends, HTTPException, WebSocket, WebSocketException, Query, status, BackgroundTasks
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session, joinedload
@@ -70,10 +71,10 @@ manager = ConnectionManager()
 # 1. O Novo "Segurança" do WebSocket
 async def verify_ws_key(api_key: str = Query(...)):
     """Verifica a chave de segurança que vem na URL (Query Parameter)"""
-    # 🚨 Substitua pela mesma constante ou lógica de banco que você usa no Header
-    CHAVE_CORRETA = "chave_secreta_admin_123" 
-    
-    if api_key != CHAVE_CORRETA:
+ 
+    settings = get_settings()
+
+    if api_key != settings.api_key_admin:
         # Padrão WS_1008 é a forma correta do protocolo WebSocket dizer "Acesso Negado"
         raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
     return api_key
@@ -113,6 +114,7 @@ async def enroll_student(
     db: Session = Depends(get_db)
 ):
     logger.info(f"Iniciando cadastro para matrícula: {matricula}")
+    settings = get_settings()
 
     # ── 1. Extração do vetor facial ──────────────────────────────────────────
     try:
@@ -141,7 +143,7 @@ async def enroll_student(
 
     # ── 3. Verificação de unicidade biométrica ───────────────────────────────
     sosia = db.query(models.Aluno).filter(
-        models.Aluno.vetor_128d.l2_distance(vetor_128d) < 0.45
+        models.Aluno.vetor_128d.l2_distance(vetor_128d) < settings.THRESHOLD_DUPLICATA
     ).first()
 
     if sosia:
@@ -364,7 +366,8 @@ async def verify_access(
     distancia = round(float(distancia), 4)
 
     # Threshold de reconhecimento: distância L2 > 0.6 → rosto desconhecido
-    THRESHOLD = 0.6
+    settings = get_settings()
+    THRESHOLD = settings.THRESHOLD_ACESSO
     if distancia > THRESHOLD:
         payload_ws = _montar_payload_ws(dispositivo, distancia)
         payload_ws.update({

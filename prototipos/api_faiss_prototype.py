@@ -1,3 +1,8 @@
+# PROTÓTIPO HISTÓRICO — substituído pela versão em app/
+# Esta versão usava FAISS + JSON para armazenamento vetorial.
+# A versão atual usa PostgreSQL + pgvector (ACID, sem arquivo .index).
+# Mantido apenas para referência da evolução do projeto.
+
 from fastapi import FastAPI, UploadFile, File, Form
 import face_recognition
 import cv2
