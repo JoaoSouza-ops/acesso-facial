@@ -1,0 +1,29 @@
+### 1. Teste SEM CHAVE (Deve retornar 401 e erro de header ausente)
+GET http://127.0.0.1:8000/teste-enroll
+
+###
+
+### 2. Teste Enroll com Chave Inválida
+GET http://127.0.0.1:8000/teste-enroll
+X-API-Key-Enroll: chave_errada_123
+
+###
+
+### 3. Teste Dispositivo (Validando Erro de MAC ou Chave)
+# Mesmo que a chave esteja certa, o MAC precisa bater com o que está no banco
+GET http://127.0.0.1:8000/teste-dispositivo
+X-API-Key-Device: hub-dev-device-chave-secreta-123
+X-Device-MAC: 00:11:22:33:44:55
+
+### Teste C — Verificação de acesso (foto cadastrada)
+POST http://127.0.0.1:8000/api/v1/access/verify
+X-API-Key-Device: hub-dev-device-chave-secreta-123
+X-Device-MAC: 00:11:22:33:44:55
+Content-Type: multipart/form-data; boundary=----boundary
+
+------boundary
+Content-Disposition: form-data; name="foto"; filename="foto_pedro_pascal.jpg"
+Content-Type: image/jpeg
+
+< ./tests/fixtures/foto_pedro_pascal.jpg
+------boundary--

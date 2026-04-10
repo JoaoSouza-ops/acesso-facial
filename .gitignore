@@ -17,3 +17,5 @@ banco_biometrico.index
 mapa_alunos.json
 __pycache__/
 .pytest_cache/
+*.db
+*.index

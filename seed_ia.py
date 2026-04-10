@@ -16,6 +16,8 @@ def executar_seed():
     # Formato: (Nome do Aluno, Nome do Arquivo)
     alunos_iniciais = [
         ("João Aluno", "foto_joao1.jpg"),
+        ("Ryan Aluno", "foto_ryan.jpeg")
+
     # Adicione outros se tiver mais fotos em fixtures
     ]
     

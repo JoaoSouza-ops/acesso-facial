@@ -15,15 +15,15 @@ def test_erro_foto_totalmente_escura():
 
 def test_comportamento_multiplas_faces():
     """
-    Verifica se o sistema lida com mais de uma face. 
-    O face_recognition por padrão pega a primeira, mas o sistema deve ser consistente.
+    Uma catraca de segurança DEVE rejeitar imagens com múltiplos rostos.
+    Não é seguro identificar alguém quando há mais de uma pessoa na câmera.
     """
     caminho = FIXTURES / 'duas_faces.jpeg'
-    if caminho.exists():
-        vetor = extract_face_vector(caminho.read_bytes())
-        assert vetor.shape == (128,)
-    else:
-        pytest.skip("Fixture 'duas_faces.jpg' não encontrada.")
+    if not caminho.exists():
+        pytest.skip("Fixture 'duas_faces.jpeg' não encontrada.")
+
+    with pytest.raises(ValueError, match="Múltiplos rostos detectados"):
+        extract_face_vector(caminho.read_bytes())
 
 def test_extração_com_foto_real_escura():
     """Testa se a IA identifica que a imagem real não tem qualidade suficiente."""
