@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from typing import List, Optional
 from app.middleware.auth import require_enroll_key, require_admin_key, require_device_key
-from app.database import get_db, engine
+from app.database import get_db, engine, SessionLocal
 from app import models, schemas
 from app.services import vision_service, rbac_service
 from app.services.face_service import LowQualityImageError
@@ -18,6 +18,10 @@ import json
 import uuid
 
 from datetime import datetime
+from sqlalchemy import text
+
+
+
 
 # Configura o logger interno (substitui os prints soltos)
 logger = logging.getLogger("uvicorn.error")
@@ -80,17 +84,45 @@ async def verify_ws_key(api_key: str = Query(...)):
     return api_key
 
 # ==========================================
+# Rotas heathcheck
+# ==========================================
+
+
+@app.get("/api/v1/healthz", tags=["System"], summary="Liveness Probe")
+def health_check():
+    """Verifica se a API está no ar e respondendo a requisições."""
+    return {"status": "ok", "timestamp": datetime.now().isoformat()}
+
+@app.get("/api/v1/readyz", tags=["System"], summary="Readiness Probe")
+def readiness_check(db: Session = Depends(get_db)):
+    """Verifica se a API está pronta para receber tráfego (Banco de Dados online)."""
+    try:
+        db.execute(text("SELECT 1"))
+        return {"status": "ready"}
+    except Exception as e:
+        logger.error(f"Readiness falhou: {e}")
+        raise HTTPException(status_code=503, detail="Service Unavailable - Database Down")
+
+
+# ==========================================
 # WebSocket para o feed em tempo real dos eventos
 # ==========================================
-@app.websocket("/api/v1/ws/feed")
-async def websocket_feed(websocket: WebSocket, api_key: str = Depends(verify_ws_key)):
-    # Se chegou aqui, a chave da URL é válida!
+
+from fastapi import Query, WebSocketException, status
+
+@app.websocket("/ws/feed")
+async def websocket_feed(websocket: WebSocket, token: str = Query(None)):
+    # Validação manual do token via query parameter
+    settings = get_settings()
+    if token != settings.api_key_admin:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
     await manager.connect(websocket)
     try:
         while True:
-            # Mantém a conexão viva escutando (mesmo que o cliente não mande nada)
             data = await websocket.receive_text()
-    except Exception as e:
+    except WebSocketDisconnect:
         manager.disconnect(websocket)
 
 
@@ -193,14 +225,18 @@ async def enroll_student(
 # ROTAS ADMINISTRATIVAS (Frontend)
 # ==========================================
 
-@app.get("/api/v1/admin/devices")
+@app.get("/api/v1/admin/devices", dependencies=[Depends(require_admin_key)], tags=["Admin"])
 def get_devices(db: Session = Depends(get_db)):
     """Retorna o status real de todas as catracas conectadas no PostgreSQL"""
     dispositivos = db.query(models.Dispositivo).all()
     return dispositivos
 
 # 1. LISTAR (GET) - O que já temos
-@app.get("/api/v1/admin/overrides", response_model=list[schemas.OverrideResponse])
+@app.get("/api/v1/admin/overrides", 
+    response_model=list[schemas.OverrideResponse], 
+    dependencies=[Depends(require_admin_key)], 
+    tags=["Admin"])
+
 def get_overrides(db: Session = Depends(get_db)):
     # FIX #2: usa joinedload para que item.aluno.nome_completo chegue preenchido no frontend
     return db.query(models.OverrideAcesso)\
@@ -217,7 +253,12 @@ class OverrideCreate(BaseModel):
 
 
 # 2. CRIAR (POST) - Persistência Real
-@app.post("/api/v1/admin/overrides", status_code=201, response_model=schemas.OverrideResponse)
+@app.post("/api/v1/admin/overrides", 
+    status_code=201,
+    response_model=schemas.OverrideResponse,
+    dependencies=[Depends(require_admin_key)], tags=["Admin"]
+    )
+
 def create_override(obj_in: OverrideCreate, db: Session = Depends(get_db)):
     # 1. Validação do Aluno — obj_in.id_aluno é garantidamente int pelo Pydantic
     aluno_existe = db.query(models.Aluno).filter(models.Aluno.id_aluno == obj_in.id_aluno).first()
@@ -254,7 +295,8 @@ def create_override(obj_in: OverrideCreate, db: Session = Depends(get_db)):
 
 
 # 3. DELETAR (DELETE) - Remoção por ID
-@app.delete("/api/v1/admin/overrides/{id_override}")
+@app.delete("/api/v1/admin/overrides/{id_override}", dependencies=[Depends(require_admin_key)], tags=["Admin"])
+
 def delete_override(id_override: int, db: Session = Depends(get_db)):
     """Remove uma regra de acesso do banco"""
     target = db.query(models.OverrideAcesso).filter(models.OverrideAcesso.id_override == id_override).first()
@@ -279,32 +321,29 @@ def _montar_payload_ws(dispositivo: models.Dispositivo, distancia: float) -> dic
     }
 
 
-def _gravar_evento(
-    db: Session,
-    id_aluno: int | None,
-    id_dispositivo: int,
-    resultado: str,
-    codigo_motivo: str,
-    distancia: float
-) -> None:
-    """
-    Persiste o evento de acesso no banco de dados.
-    Executada como BackgroundTask — não bloqueia a resposta ao ESP32.
-    """
+# Certifique-se de que SessionLocal está importado no topo do arquivo:
+# from app.database import get_db, engine, SessionLocal 
+
+def _gravar_evento(id_aluno, id_dispositivo, resultado, codigo_motivo, distancia=None):
+    db_bg = SessionLocal() # Inicia uma sessão exclusiva para a task
     try:
         evento = models.EventoAcesso(
             id_aluno=id_aluno,
             id_dispositivo=id_dispositivo,
             resultado=resultado,
             codigo_motivo=codigo_motivo,
-            distancia_ia=distancia,
+            distancia_ia=distancia
         )
-        db.add(evento)
-        db.commit()
-        logger.debug(f"EventoAcesso gravado: resultado={resultado}, aluno={id_aluno}")
+        db_bg.add(evento)
+        db_bg.commit()
     except Exception as e:
-        db.rollback()
+        db_bg.rollback()
         logger.error(f"Falha ao gravar EventoAcesso: {e}")
+    finally:
+        db_bg.close() # Garante que a conexão retorne ao pool
+
+
+
 
 # ==========================================
 # VERIFICAÇÃO FACIAL — CATRACA (ESP32-CAM)
@@ -312,8 +351,7 @@ def _gravar_evento(
 @app.post(
     "/api/v1/access/verify",
     response_model=schemas.AcessoLiberado,
-    status_code=200,
-    dependencies=[Depends(require_device_key)]
+    status_code=200
 )
 async def verify_access(
     background_tasks: BackgroundTasks,

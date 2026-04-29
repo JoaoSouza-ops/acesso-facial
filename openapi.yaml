@@ -1,0 +1,650 @@
+openapi: 3.1.0
+info:
+  title: Sistema de Acesso Facial - ExpoTech
+  version: 0.1.0
+paths:
+  /api/v1/healthz:
+    get:
+      tags:
+      - System
+      summary: Liveness Probe
+      description: Verifica se a API está no ar e respondendo a requisições.
+      operationId: health_check_api_v1_healthz_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /api/v1/readyz:
+    get:
+      tags:
+      - System
+      summary: Readiness Probe
+      description: Verifica se a API está pronta para receber tráfego (Banco de Dados
+        online).
+      operationId: readiness_check_api_v1_readyz_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /api/v1/access/enroll:
+    post:
+      summary: Enroll Student
+      operationId: enroll_student_api_v1_access_enroll_post
+      parameters:
+      - name: X-API-Key-Enroll
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Api-Key-Enroll
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_enroll_student_api_v1_access_enroll_post'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlunoEnrollado'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/devices:
+    get:
+      tags:
+      - Admin
+      summary: Get Devices
+      description: Retorna o status real de todas as catracas conectadas no PostgreSQL
+      operationId: get_devices_api_v1_admin_devices_get
+      parameters:
+      - name: X-API-Key-Admin
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Api-Key-Admin
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/overrides:
+    get:
+      tags:
+      - Admin
+      summary: Get Overrides
+      operationId: get_overrides_api_v1_admin_overrides_get
+      parameters:
+      - name: X-API-Key-Admin
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Api-Key-Admin
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OverrideResponse'
+                title: Response Get Overrides Api V1 Admin Overrides Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - Admin
+      summary: Create Override
+      operationId: create_override_api_v1_admin_overrides_post
+      parameters:
+      - name: X-API-Key-Admin
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Api-Key-Admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OverrideCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OverrideResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/overrides/{id_override}:
+    delete:
+      tags:
+      - Admin
+      summary: Delete Override
+      description: Remove uma regra de acesso do banco
+      operationId: delete_override_api_v1_admin_overrides__id_override__delete
+      parameters:
+      - name: id_override
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: Id Override
+      - name: X-API-Key-Admin
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Api-Key-Admin
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/access/verify:
+    post:
+      summary: Verify Access
+      description: "Rota principal da catraca. Chamada pelo ESP32-CAM via multipart/form-data.\n\
+        \nPipeline de 5 etapas:\n  1. Extração do vetor facial da imagem recebida\n\
+        \  2. Busca do aluno mais próximo no banco via pgvector\n  3. Validação RBAC\
+        \ (4 regras em sequência)\n  4. Gravação assíncrona do EventoAcesso (não bloqueia\
+        \ a resposta)\n  5. Broadcast do evento para o feed de segurança em tempo\
+        \ real"
+      operationId: verify_access_api_v1_access_verify_post
+      parameters:
+      - name: X-API-Key-Device
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Api-Key-Device
+      - name: X-Device-MAC
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Device-Mac
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_verify_access_api_v1_access_verify_post'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcessoLiberado'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /teste-identify:
+    post:
+      summary: Identificar Acesso
+      description: 'Alternativa ao /verify para ambientes de teste.
+
+        Recebe o vetor 128D já calculado em vez da imagem bruta.
+
+        Usa a mesma lógica RBAC e grava o mesmo EventoAcesso.'
+      operationId: identificar_acesso_teste_identify_post
+      parameters:
+      - name: X-API-Key-Device
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Api-Key-Device
+      - name: X-Device-MAC
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Device-Mac
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              title: Request
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /teste-enroll:
+    get:
+      summary: Test Enroll
+      operationId: test_enroll_teste_enroll_get
+      parameters:
+      - name: X-API-Key-Enroll
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Api-Key-Enroll
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /teste-admin:
+    get:
+      summary: Test Admin
+      operationId: test_admin_teste_admin_get
+      parameters:
+      - name: X-API-Key-Admin
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Api-Key-Admin
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /teste-dispositivo:
+    get:
+      summary: Test Device
+      operationId: test_device_teste_dispositivo_get
+      parameters:
+      - name: X-API-Key-Device
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Api-Key-Device
+      - name: X-Device-MAC
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Device-Mac
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /teste-alunos:
+    get:
+      summary: List Students
+      operationId: list_students_teste_alunos_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/AlunoResponse'
+                type: array
+                title: Response List Students Teste Alunos Get
+  /teste-identify-with-image:
+    post:
+      summary: Test Identify Image
+      operationId: test_identify_image_teste_identify_with_image_post
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_test_identify_image_teste_identify_with_image_post'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    AcessoLiberado:
+      properties:
+        status:
+          type: string
+          title: Status
+          default: liberado
+        nome:
+          type: string
+          title: Nome
+        matricula:
+          type: string
+          title: Matricula
+        tipo_vinculo:
+          type: string
+          title: Tipo Vinculo
+      type: object
+      required:
+      - nome
+      - matricula
+      - tipo_vinculo
+      title: AcessoLiberado
+      description: 'Resposta HTTP 200 do POST /access/verify.
+
+        O ESP32 usa o status 200 para acionar o relé imediatamente.'
+    AlunoEmOverride:
+      properties:
+        id_aluno:
+          type: integer
+          title: Id Aluno
+        nome_completo:
+          type: string
+          title: Nome Completo
+        matricula:
+          type: string
+          title: Matricula
+      type: object
+      required:
+      - id_aluno
+      - nome_completo
+      - matricula
+      title: AlunoEmOverride
+      description: Subconjunto do aluno embutido na resposta de override (evita expor
+        vetor biométrico).
+    AlunoEnrollado:
+      properties:
+        id_aluno:
+          type: integer
+          title: Id Aluno
+        matricula:
+          type: string
+          title: Matricula
+        nome_completo:
+          type: string
+          title: Nome Completo
+        mensagem:
+          type: string
+          title: Mensagem
+          default: Aluno cadastrado com sucesso. Vetor facial indexado no banco.
+      type: object
+      required:
+      - id_aluno
+      - matricula
+      - nome_completo
+      title: AlunoEnrollado
+      description: 'Resposta de sucesso do POST /access/enroll (HTTP 201).
+
+        Contém apenas o necessário para o app confirmar o cadastro.'
+    AlunoResponse:
+      properties:
+        matricula:
+          type: string
+          maxLength: 20
+          title: Matricula
+          description: Matrícula única do aluno
+        nome_completo:
+          type: string
+          maxLength: 255
+          title: Nome Completo
+        curso:
+          type: string
+          maxLength: 100
+          title: Curso
+        tipo_vinculo:
+          $ref: '#/components/schemas/TipoVinculoEnum'
+        turno:
+          $ref: '#/components/schemas/TurnoEnum'
+        status_acesso:
+          $ref: '#/components/schemas/StatusAcessoEnum'
+          default: ATIVO
+        id_aluno:
+          type: integer
+          title: Id Aluno
+        criado_em:
+          type: string
+          format: date-time
+          title: Criado Em
+      type: object
+      required:
+      - matricula
+      - nome_completo
+      - curso
+      - tipo_vinculo
+      - turno
+      - id_aluno
+      - criado_em
+      title: AlunoResponse
+    Body_enroll_student_api_v1_access_enroll_post:
+      properties:
+        matricula:
+          type: string
+          title: Matricula
+        nome_completo:
+          type: string
+          title: Nome Completo
+        curso:
+          type: string
+          title: Curso
+        tipo_vinculo:
+          $ref: '#/components/schemas/TipoVinculoEnum'
+        turno:
+          $ref: '#/components/schemas/TurnoEnum'
+        foto:
+          type: string
+          contentMediaType: application/octet-stream
+          title: Foto
+      type: object
+      required:
+      - matricula
+      - nome_completo
+      - curso
+      - tipo_vinculo
+      - turno
+      - foto
+      title: Body_enroll_student_api_v1_access_enroll_post
+    Body_test_identify_image_teste_identify_with_image_post:
+      properties:
+        foto:
+          type: string
+          contentMediaType: application/octet-stream
+          title: Foto
+      type: object
+      required:
+      - foto
+      title: Body_test_identify_image_teste_identify_with_image_post
+    Body_verify_access_api_v1_access_verify_post:
+      properties:
+        foto:
+          type: string
+          contentMediaType: application/octet-stream
+          title: Foto
+      type: object
+      required:
+      - foto
+      title: Body_verify_access_api_v1_access_verify_post
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    OverrideCreate:
+      properties:
+        id_aluno:
+          type: integer
+          title: Id Aluno
+        bloco:
+          type: string
+          title: Bloco
+        tipo_override:
+          type: string
+          title: Tipo Override
+        motivo:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Motivo
+        nome_aluno:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Nome Aluno
+      type: object
+      required:
+      - id_aluno
+      - bloco
+      - tipo_override
+      title: OverrideCreate
+    OverrideResponse:
+      properties:
+        id_override:
+          type: integer
+          title: Id Override
+        id_aluno:
+          type: integer
+          title: Id Aluno
+        bloco:
+          type: string
+          title: Bloco
+        tipo_override:
+          type: string
+          title: Tipo Override
+        motivo:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Motivo
+        criado_em:
+          type: string
+          format: date-time
+          title: Criado Em
+        aluno:
+          anyOf:
+          - $ref: '#/components/schemas/AlunoEmOverride'
+          - type: 'null'
+      type: object
+      required:
+      - id_override
+      - id_aluno
+      - bloco
+      - tipo_override
+      - criado_em
+      title: OverrideResponse
+    StatusAcessoEnum:
+      type: string
+      enum:
+      - ATIVO
+      - BLOQUEADO
+      title: StatusAcessoEnum
+    TipoVinculoEnum:
+      type: string
+      enum:
+      - GRADUACAO
+      - POS_GRADUACAO
+      - PROFESSOR
+      - FUNCIONARIO
+      title: TipoVinculoEnum
+    TurnoEnum:
+      type: string
+      enum:
+      - MANHA
+      - TARDE
+      - NOITE
+      - INTEGRAL
+      title: TurnoEnum
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError

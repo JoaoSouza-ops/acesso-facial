@@ -1,6 +1,6 @@
 # app/config.py
-from pydantic_settings import BaseSettings
 from functools import lru_cache
+from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     api_key_device: str
     api_key_enroll: str
@@ -9,8 +9,6 @@ class Settings(BaseSettings):
     THRESHOLD_DUPLICATA: float = 0.45   # usado no enroll (detectar sósias)
     THRESHOLD_ACESSO: float = 0.60      # usado no verify (reconhecer na catraca)
     firebase_credentials_path: str = ''
-    class Config:
-        env_file = '.env'
-        case_sensitive = False
+    model_config = model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 @lru_cache()
 def get_settings(): return Settings()

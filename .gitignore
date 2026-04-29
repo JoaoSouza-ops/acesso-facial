@@ -20,3 +20,9 @@ __pycache__/
 *.db
 *.index
 *.sql
+# Arquivos do protótipo FAISS (gerados em tempo de execução)
+banco_biometrico.index
+vector_index.index
+nomes_alunos.json
+mapa_alunos.json
+meu_rosto.npy
