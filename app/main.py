@@ -324,7 +324,7 @@ def _montar_payload_ws(dispositivo: models.Dispositivo, distancia: float) -> dic
 # Certifique-se de que SessionLocal está importado no topo do arquivo:
 # from app.database import get_db, engine, SessionLocal 
 
-def _gravar_evento(id_aluno, id_dispositivo, resultado, codigo_motivo, distancia=None):
+def _gravar_evento(id_aluno, id_dispositivo, resultado, codigo_motivo, distancia=None, ocorrido_em=None):
     db_bg = SessionLocal() # Inicia uma sessão exclusiva para a task
     try:
         evento = models.EventoAcesso(
@@ -332,7 +332,8 @@ def _gravar_evento(id_aluno, id_dispositivo, resultado, codigo_motivo, distancia
             id_dispositivo=id_dispositivo,
             resultado=resultado,
             codigo_motivo=codigo_motivo,
-            distancia_ia=distancia
+            distancia_ia=distancia,
+            ocorrido_em=ocorrido_em
         )
         db_bg.add(evento)
         db_bg.commit()
