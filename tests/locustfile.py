@@ -97,10 +97,9 @@ def _nome_aleatorio() -> str:
 
 
 # Caminho opcional para foto real usada no /verify (caminho feliz)
-FOTO_VERIFY_PATH = os.getenv(
-    "FOTO_VERIFY_PATH",
-    "tests/fixtures/rosto_cadastrado.jpg"   # ajuste para o seu arquivo
-)
+
+FOTO_VERIFY_PATH = "tests/fixtures/foto_zara-larsson.jpg"
+
 
 # ---------------------------------------------------------------------------
 # TaskSets — agrupa tasks por perfil de usuário
@@ -206,9 +205,11 @@ class TarefasCatraca(TaskSet):
         if os.path.exists(FOTO_VERIFY_PATH):
             self._foto = _jpeg_de_arquivo(FOTO_VERIFY_PATH)
             self._usa_foto_real = True
+            print(f"✅ SUCESSO: Carregando foto real para testes: {FOTO_VERIFY_PATH}")
         else:
             self._foto = _jpeg_sintetico(width=160, height=160)
             self._usa_foto_real = False
+            print(f"⚠️ AVISO: Arquivo {FOTO_VERIFY_PATH} não encontrado. Usando imagem sintética.")
 
     @tag("verify")
     @task(1)

@@ -20,9 +20,31 @@ __pycache__/
 *.db
 *.index
 *.sql
+
 # Arquivos do protótipo FAISS (gerados em tempo de execução)
 banco_biometrico.index
 vector_index.index
 nomes_alunos.json
 mapa_alunos.json
 meu_rosto.npy
+
+# --- Bancos de Dados e Backups Locais ---
+*.db
+acesso_facial.db
+backup_smartbuilds.sql
+
+# --- Artefatos e Arquivos Zipados ---
+*.zip
+app.zip
+relatorio.html
+vector_index.index
+
+# --- Binários de SO (Windows/Linux) ---
+*.whl
+dlib-19.24.1-cp311-cp311-win_amd64.whl
+
+# --- Dados Gerados por IA e Testes Pessoais ---
+*.npy
+meu_rosto.npy
+foto_teste.jpg
+# mapa_alunos.json (Descomente se tiver dados reais de alunos. Se for só um mock vazio para teste, pode deixar subir)
