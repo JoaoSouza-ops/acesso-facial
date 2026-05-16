@@ -382,6 +382,7 @@ async def verify_access(
 
     # ── Etapa 1: Extração do vetor facial ────────────────────────────────────
     foto_bytes = await foto.read()
+    
 
     if not foto_bytes:
         raise HTTPException(status_code=400, detail="Arquivo de imagem está vazio.")
