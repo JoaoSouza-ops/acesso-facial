@@ -98,7 +98,7 @@ def _nome_aleatorio() -> str:
 
 # Caminho opcional para foto real usada no /verify (caminho feliz)
 
-FOTO_VERIFY_PATH = "tests/fixtures/foto_zara-larsson.jpg"
+FOTO_VERIFY_PATH = "tests/fixtures/foto_esp32.jpg"
 
 
 # ---------------------------------------------------------------------------

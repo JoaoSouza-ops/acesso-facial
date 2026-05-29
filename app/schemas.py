@@ -67,6 +67,15 @@ class AlunoEmOverride(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+    # ==========================================
+# 3. SCHEMAS DE OVERRIDES
+# ==========================================
+class OverrideCreate(BaseModel):
+    matricula: str = Field(..., description="Matrícula do aluno para o qual a regra será aplicada")
+    bloco: str
+    tipo_override: str
+    motivo: str
+
 class OverrideResponse(BaseModel):
     id_override: int
     id_aluno: int
