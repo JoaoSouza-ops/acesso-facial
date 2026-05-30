@@ -65,16 +65,16 @@ ESP32-CAM / Cliente HTTP
 
 ## Tecnologias Utilizadas
 
-| Camada           | Tecnologia                                   |
-|------------------|----------------------------------------------|
-| Framework Web    | FastAPI + Uvicorn                            |
-| Banco de Dados   | PostgreSQL com extensão **pgvector**         |
-| ORM              | SQLAlchemy                                   |
-| IA / Biometria   | `face_recognition` (dlib) + OpenCV + Pillow  |
-| Busca Vetorial   | pgvector (distância L2 nativa no PostgreSQL) |
-| Validação        | Pydantic v2                                  |
-| Tempo Real       | WebSocket nativo do FastAPI                  |
-| Testes           | pytest                                       |
+| Camada         | Tecnologia                                   |
+| -------------- | -------------------------------------------- |
+| Framework Web  | FastAPI + Uvicorn                            |
+| Banco de Dados | PostgreSQL com extensão **pgvector**         |
+| ORM            | SQLAlchemy                                   |
+| IA / Biometria | `face_recognition` (dlib) + OpenCV + Pillow  |
+| Busca Vetorial | pgvector (distância L2 nativa no PostgreSQL) |
+| Validação      | Pydantic v2                                  |
+| Tempo Real     | WebSocket nativo do FastAPI                  |
+| Testes         | pytest                                       |
 
 ---
 
@@ -85,11 +85,13 @@ ESP32-CAM / Cliente HTTP
 - `cmake` e bibliotecas de compilação para o `dlib` (requerido pelo `face_recognition`)
 
 **No Ubuntu/Debian:**
+
 ```bash
 sudo apt update && sudo apt install -y cmake build-essential libopenblas-dev liblapack-dev
 ```
 
 **No macOS (Homebrew):**
+
 ```bash
 brew install cmake openblas
 ```
@@ -175,27 +177,54 @@ WS_ADMIN_KEY=chave_secreta_admin_123
 
 ### Acesso
 
-| Método | Rota                        | Autenticação       | Descrição                              |
-|--------|-----------------------------|--------------------|----------------------------------------|
-| POST   | `/api/v1/access/enroll`     | `X-API-Key-Enroll` | Cadastra um novo aluno com foto        |
-| POST   | `/api/v1/access/verify`     | `X-API-Key-Device` + `X-Device-MAC` | Verifica acesso pela catraca |
+| Método | Rota                    | Autenticação                        | Descrição                       |
+| ------ | ----------------------- | ----------------------------------- | ------------------------------- |
+| POST   | `/api/v1/access/enroll` | `X-API-Key-Enroll`                  | Cadastra um novo aluno com foto |
+| POST   | `/api/v1/access/verify` | `X-API-Key-Device` + `X-Device-MAC` | Verifica acesso pela catraca    |
 
 ### Administração
 
-| Método | Rota                           | Descrição                                |
-|--------|--------------------------------|------------------------------------------|
-| GET    | `/api/v1/admin/devices`        | Lista todas as catracas e seus status    |
-| GET    | `/api/v1/admin/overrides`      | Lista todas as regras de exceção         |
-| POST   | `/api/v1/admin/overrides`      | Cria uma regra de exceção para um aluno  |
-| DELETE | `/api/v1/admin/overrides/{id}` | Remove uma regra de exceção              |
+| Método | Rota                           | Descrição                               |
+| ------ | ------------------------------ | --------------------------------------- |
+| GET    | `/api/v1/admin/devices`        | Lista todas as catracas e seus status   |
+| GET    | `/api/v1/admin/overrides`      | Lista todas as regras de exceção        |
+| POST   | `/api/v1/admin/overrides`      | Cria uma regra de exceção para um aluno |
+| DELETE | `/api/v1/admin/overrides/{id}` | Remove uma regra de exceção             |
 
 ### Testes / Utilitários
 
-| Método | Rota                           | Descrição                                            |
-|--------|--------------------------------|------------------------------------------------------|
-| GET    | `/teste-alunos`                | Lista todos os alunos cadastrados                    |
-| POST   | `/teste-identify`              | Identifica por vetor JSON (sem imagem, para Postman) |
-| POST   | `/teste-identify-with-image`   | Identifica por imagem sem autenticação de dispositivo|
+| Método | Rota                         | Descrição                                             |
+| ------ | ---------------------------- | ----------------------------------------------------- |
+| GET    | `/teste-alunos`              | Lista todos os alunos cadastrados                     |
+| POST   | `/teste-identify`            | Identifica por vetor JSON (sem imagem, para Postman)  |
+| POST   | `/teste-identify-with-image` | Identifica por imagem sem autenticação de dispositivo |
+
+### Rota: `/ws/feed`
+
+- **Ambiente de Desenvolvimento:** `ws://localhost:8000/ws/feed`
+- **Ambiente de Produção:** `wss://api.hub.edu.br/ws/feed`
+
+Autenticação
+A autenticação deve ser realizada no momento do handshake via _Query Parameter_.
+`?token=SUA_CHAVE_DE_ACESSO`
+
+> **Nota de Segurança:** Caso o token seja omitido, inválido ou a camada de autorização falhe, o servidor rejeitará a conexão imediatamente devolvendo o código de fechamento padrão RFC 6455: `1008 (Policy Violation)`.
+
+Contrato de Dados (Payload)
+Assim que uma validação facial ocorre na rota `/api/v1/access/verify`, todos os clientes conectados ao feed recebem um broadcast em formato JSON contendo o resultado da operação:
+
+```json
+{
+  "id": "evt-1717000000.0",
+  "id_dispositivo": 1,
+  "localizacao": "Portaria A",
+  "ocorrido_em": "2026-05-29T14:32:00",
+  "distancia_l2": 0.312,
+  "id_aluno": 42,
+  "nome_aluno": "João Silva",
+  "resultado": "LIBERADO",
+  "codigo_motivo": "ACESSO_OK"
+}
 
 ---
 
@@ -204,17 +233,19 @@ WS_ADMIN_KEY=chave_secreta_admin_123
 O controle de acesso segue o princípio **Fail-Secure**: se não houver regra explícita de permissão, o acesso é negado. As 4 regras são avaliadas **em sequência**:
 
 ```
+
 Regra 1: Bloqueio Administrativo
-  → O aluno está com status "BLOQUEADO" no banco? → NEGA (BLOQUEIO_ADMINISTRATIVO)
+→ O aluno está com status "BLOQUEADO" no banco? → NEGA (BLOQUEIO_ADMINISTRATIVO)
 
 Regra 2: Override Individual — BLOQUEAR
-  → Existe uma exceção de BLOQUEIO para este aluno neste bloco? → NEGA (BLOCO_NAO_PERMITIDO)
+→ Existe uma exceção de BLOQUEIO para este aluno neste bloco? → NEGA (BLOCO_NAO_PERMITIDO)
 
 Regra 3: Override Individual — PERMITIR
-  → Existe uma exceção de PERMISSÃO para este aluno neste bloco? → LIBERA
+→ Existe uma exceção de PERMISSÃO para este aluno neste bloco? → LIBERA
 
 Regra 4: Regra Padrão do Vínculo
-  → O tipo de vínculo do aluno (GRADUACAO, PROFESSOR, etc.) tem permissão neste bloco? → LIBERA ou NEGA
+→ O tipo de vínculo do aluno (GRADUACAO, PROFESSOR, etc.) tem permissão neste bloco? → LIBERA ou NEGA
+
 ```
 
 **Tipos de Vínculo:** `GRADUACAO` | `POS_GRADUACAO` | `PROFESSOR` | `FUNCIONARIO`
@@ -228,8 +259,10 @@ Regra 4: Regra Padrão do Vínculo
 O painel de segurança pode se conectar ao feed de eventos em tempo real:
 
 ```
+
 ws://localhost:8000/api/v1/ws/feed?api_key=SUA_CHAVE_ADMIN
-```
+
+````
 
 **Payload de evento recebido:**
 ```json
@@ -244,7 +277,7 @@ ws://localhost:8000/api/v1/ws/feed?api_key=SUA_CHAVE_ADMIN
   "resultado": "LIBERADO",
   "codigo_motivo": "ACESSO_OK"
 }
-```
+````
 
 `resultado` pode ser: `LIBERADO` | `BLOQUEADO`
 
@@ -266,6 +299,7 @@ pytest tests/test_face_service.py
 ```
 
 **Cobertura atual dos testes:**
+
 - `test_face_service.py` — Extração de vetor, serialização round-trip, detecção de erro sem face
 - `test_faiss_service.py` — Busca vetorial e threshold
 - `test_robustez.py` — Imagens de baixa qualidade, múltiplos rostos, imagem escura
@@ -309,6 +343,7 @@ acesso-facial/
 Projeto desenvolvido como trabalho universitário para a **ExpoTech**.
 
 Colaboradores identificados nas branches do repositório:
+
 - **João** — Módulo de IA (face_service, vision_service, FAISS)
 - **Ian** — Backend principal (rotas, banco de dados, RBAC)
 - **Hericles e Julia** — Dashboard / Frontend (consumidor do WebSocket)

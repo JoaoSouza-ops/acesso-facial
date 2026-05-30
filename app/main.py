@@ -1,5 +1,5 @@
 from app.config import get_settings
-from fastapi import FastAPI, File, UploadFile, Form, Depends, HTTPException, WebSocket, WebSocketException, Query, status, BackgroundTasks, Request, Header
+from fastapi import FastAPI, File, UploadFile, Form, Depends, HTTPException, WebSocket, WebSocketException, WebSocketDisconnect, Query, status, BackgroundTasks, Request, Header
 from fastapi.responses import JSONResponse
 from fastapi.openapi.utils import get_openapi
 from sqlalchemy.orm import Session, joinedload
@@ -21,6 +21,32 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from sqlalchemy import text
 
+api_description = """
+**API RESTful para controle de acesso facial e gestão de catracas.**
+
+---
+
+### 🔌 WebSocket — `/ws/feed`
+Canal bidirecional em tempo real para telemetria e broadcast de eventos de acesso (ideal para integração com ESP32/IoT).
+
+* **Conexão:** `ws://localhost:8000/ws/feed?token=SEU_TOKEN_AQUI`
+* **Autenticação:** Passada obrigatoriamente via *query parameter* `?token=` (devido à limitação de headers nativos em clientes WSS de navegadores).
+* **Fechamento de Conexão:** Em caso de token inválido ou ausente, o servidor encerra o handshake com o código `1008 (Policy Violation)`.
+
+#### Payload de Evento Recebido (Exemplo JSON):
+```json
+{
+  "id": "evt-1717000000.0",
+  "id_dispositivo": 1,
+  "localizacao": "Portaria A",
+  "ocorrido_em": "2026-05-29T14:32:00",
+  "distancia_l2": 0.312,
+  "id_aluno": 42,
+  "nome_aluno": "João Silva",
+  "resultado": "LIBERADO",
+  "codigo_motivo": "ACESSO_OK"
+}"""
+
 logger = logging.getLogger("uvicorn.error")
 models.Base.metadata.create_all(bind=engine)
 
@@ -30,6 +56,7 @@ models.Base.metadata.create_all(bind=engine)
 app = FastAPI(
     title="Sistema de Acesso Facial - ExpoTech",
     version="1.2.1",
+    description= api_description,
     contact={
         "name": "Suporte Polinômicos",
         "email": "contato@expotech.edu.br"
@@ -117,20 +144,52 @@ class ReadyzResponse(BaseModel):
     status: str = Field(..., description="Status de prontidão")
     database: str = Field(..., description="Status da dependência de banco de dados")
 
-@app.get("/api/v1/healthz", tags=["System"], summary="Liveness Probe", response_model=HealthzResponse)
-def health_check():
-    return {"status": "ok", "timestamp": datetime.now().isoformat()}
 
-@app.get("/api/v1/readyz", tags=["System"], summary="Readiness Probe", response_model=ReadyzResponse, responses={**COMMON_RESPONSES})
+
+@app.get(
+    "/api/v1/healthz",
+    tags=["System"],
+    summary="Liveness Probe",
+    description="Verifica se a aplicação está em execução (Liveness). Usado por orquestradores (como Kubernetes) ou Load Balancers para saber se o container/processo travou e precisa ser reiniciado.",
+)
+def health_check():
+    resp = JSONResponse({
+        "status": "ok",
+        "timestamp": datetime.now().isoformat()
+    })
+    # Previne que gateways ou proxies cacheiem a resposta, mascarando quedas do sistema
+    resp.headers["Cache-Control"] = "no-store, max-age=0"
+    return resp
+
+
+@app.get(
+    "/api/v1/readyz",
+    tags=["System"],
+    summary="Readiness Probe",
+    description="Verifica se os componentes vitais (ex: Banco de Dados) estão prontos para receber tráfego."
+)
 def readiness_check(db: Session = Depends(get_db)):
     try:
         db.execute(text("SELECT 1"))
-        return {"status": "ready", "database": "online"}
+        resp = JSONResponse({"status": "ready", "database": "online"})
+        resp.headers["Cache-Control"] = "no-store, max-age=0"
+        return resp
     except Exception as e:
         logger.error(f"Readiness falhou: {e}")
-        raise HTTPException(status_code=503, detail="Service Unavailable - Database Down")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "type": "https://api.hub.edu.br/problems/database-unavailable",
+                "title": "Database Unavailable",
+                "status": 503,
+                "detail": "O banco de dados não respondeu ao healthcheck."
+            },
+            headers={
+                "Cache-Control": "no-store, max-age=0",
+                "Content-Type": "application/problem+json"
+            }
+        )
 
-from starlette.websockets import WebSocketDisconnect
 
 
 @app.websocket("/ws/feed")
@@ -330,6 +389,18 @@ def _gravar_evento(id_aluno, id_dispositivo, resultado, codigo_motivo, distancia
     "/api/v1/access/verify",
     response_model=schemas.AcessoLiberado,
     status_code=200,
+    tags=["Access"],
+    summary="Verificar acesso facial",
+    description="""
+Recebe uma imagem facial via multipart/form-data e realiza:
+1. Extração do vetor 128d via dlib (CPU-bound, executor dedicado)
+2. Busca por vizinho mais próximo no pgvector (distância L2)
+3. Validação RBAC (turno, bloco, overrides administrativos)
+4. Gravação assíncrona do EventoAcesso (BackgroundTask)
+5. Broadcast do resultado para clientes ws/feed
+
+Retorna X-Request-ID para correlação de logs com o hardware ESP32.
+    """,
     responses={
         **COMMON_RESPONSES,
         200: {

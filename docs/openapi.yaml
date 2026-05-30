@@ -6,67 +6,78 @@ info:
     email: contato@expotech.edu.br
   license:
     name: MIT
+  description: |
+    Recebe ima imagem facial via multipart/form-data e realiza:
+    1. Extração do vetor 128d via dlib (CPU-bound, executor dedicado)
+    2. Busca por vizinho mais próximo no pgvector (distância L2)
+    3. Validação RBAC (turno, bloco, overrides administrativos)
+    4. Gravação assíncrona do EventoAcesso (BackgroundTask)
+    5. Broadcast do resultado para clientes ws/feed
+
+    Retorna X-Request-ID para correlação de logs com o hardware ESP32.
   version: 1.2.1
 servers:
-- url: https://api.hub.edu.br
-  description: Produção AWS
-- url: http://localhost:8000
-  description: Desenvolvimento Local
+  - url: https://api.hub.edu.br
+    description: Produção AWS
+  - url: http://localhost:8000
+    description: Desenvolvimento Local
 paths:
   /api/v1/healthz:
     get:
       tags:
-      - System
+        - System
       summary: Liveness Probe
       operationId: health_check_api_v1_healthz_get
       responses:
-        '200':
-          description: Successful Response
+        "200":
+          description: Liveness probe — verifica se o processo está vivo. Não requer autenticação. Usado pelo orquestrador (k8s/ECS) para decidir quando reiniciar o container. Responde sempre 200 enquanto o processo existir.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HealthzResponse'
+                $ref: "#/components/schemas/HealthzResponse"
+      security: []
   /api/v1/readyz:
     get:
       tags:
-      - System
+        - System
       summary: Readiness Probe
       operationId: readiness_check_api_v1_readyz_get
       responses:
-        '200':
+        "200":
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ReadyzResponse'
-        '400':
+                $ref: "#/components/schemas/ReadyzResponse"
+        "400":
           description: Bad Request
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '401':
+                $ref: "#/components/schemas/ProblemDetails"
+        "401":
           description: Unauthorized - Chave de API ausente ou inválida
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '403':
+                $ref: "#/components/schemas/ProblemDetails"
+        "403":
           description: Forbidden - Permissão insuficiente para a ação (ou acesso negado)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '409':
+                $ref: "#/components/schemas/ProblemDetails"
+        "409":
           description: Conflict - Conflito biométrico ou quebra de regras
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '422':
-          description: Unprocessable Entity - Falha na validação semântica da imagem
+                $ref: "#/components/schemas/ProblemDetails"
+        "422":
+          description:
+            Unprocessable Entity - Falha na validação semântica da imagem
             ou body
-        '429':
+        "429":
           description: Too Many Requests - Limite de requisições excedido
           headers:
             Retry-After:
@@ -84,77 +95,80 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '500':
+                $ref: "#/components/schemas/ProblemDetails"
+        "500":
           description: Internal Server Error - Erro inesperado da infraestrutura
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '503':
+                $ref: "#/components/schemas/ProblemDetails"
+        "503":
           description: Service Unavailable - Banco de dados offline ou limpo
           content:
-            application/json:
+            application/problem+json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
+                $ref: "#/components/schemas/ProblemDetails"
   /api/v1/access/enroll:
     post:
       summary: Enroll Student
       operationId: enroll_student_api_v1_access_enroll_post
       parameters:
-      - name: Idempotency-Key
-        in: header
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          description: Chave UUID para evitar duplicidade em retentativas na inclusão
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: "null"
+            description:
+              Chave UUID para evitar duplicidade em retentativas na inclusão
+              de cadastro
+            title: Idempotency-Key
+          description:
+            Chave UUID para evitar duplicidade em retentativas na inclusão
             de cadastro
-          title: Idempotency-Key
-        description: Chave UUID para evitar duplicidade em retentativas na inclusão
-          de cadastro
       requestBody:
         required: true
         content:
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/Body_enroll_student_api_v1_access_enroll_post'
+              $ref: "#/components/schemas/Body_enroll_student_api_v1_access_enroll_post"
       responses:
-        '201':
+        "201":
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AlunoEnrollado'
-        '400':
+                $ref: "#/components/schemas/AlunoEnrollado"
+        "400":
           description: Bad Request
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '401':
+                $ref: "#/components/schemas/ProblemDetails"
+        "401":
           description: Unauthorized - Chave de API ausente ou inválida
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '403':
+                $ref: "#/components/schemas/ProblemDetails"
+        "403":
           description: Forbidden - Permissão insuficiente para a ação (ou acesso negado)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '409':
+                $ref: "#/components/schemas/ProblemDetails"
+        "409":
           description: Conflict - Conflito biométrico ou quebra de regras
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '422':
-          description: Unprocessable Entity - Falha na validação semântica da imagem
+                $ref: "#/components/schemas/ProblemDetails"
+        "422":
+          description:
+            Unprocessable Entity - Falha na validação semântica da imagem
             ou body
-        '429':
+        "429":
           description: Too Many Requests - Limite de requisições excedido
           headers:
             Retry-After:
@@ -172,80 +186,81 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '500':
+                $ref: "#/components/schemas/ProblemDetails"
+        "500":
           description: Internal Server Error - Erro inesperado da infraestrutura
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '503':
+                $ref: "#/components/schemas/ProblemDetails"
+        "503":
           description: Service Unavailable - Banco de dados offline ou limpo
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
+                $ref: "#/components/schemas/ProblemDetails"
       security:
-      - ApiKeyEnroll: []
+        - ApiKeyEnroll: []
   /api/v1/admin/devices:
     get:
       tags:
-      - Admin
+        - Admin
       summary: Get Devices
       operationId: get_devices_api_v1_admin_devices_get
       parameters:
-      - name: page
-        in: query
-        required: false
-        schema:
-          type: integer
-          minimum: 1
-          default: 1
-          title: Page
-      - name: size
-        in: query
-        required: false
-        schema:
-          type: integer
-          maximum: 100
-          minimum: 1
-          default: 20
-          title: Size
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+            title: Page
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            maximum: 100
+            minimum: 1
+            default: 20
+            title: Size
       responses:
-        '200':
+        "200":
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PaginatedDeviceResponse'
-        '400':
+                $ref: "#/components/schemas/PaginatedDeviceResponse"
+        "400":
           description: Bad Request
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '401':
+                $ref: "#/components/schemas/ProblemDetails"
+        "401":
           description: Unauthorized - Chave de API ausente ou inválida
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '403':
+                $ref: "#/components/schemas/ProblemDetails"
+        "403":
           description: Forbidden - Permissão insuficiente para a ação (ou acesso negado)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '409':
+                $ref: "#/components/schemas/ProblemDetails"
+        "409":
           description: Conflict - Conflito biométrico ou quebra de regras
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '422':
-          description: Unprocessable Entity - Falha na validação semântica da imagem
+                $ref: "#/components/schemas/ProblemDetails"
+        "422":
+          description:
+            Unprocessable Entity - Falha na validação semântica da imagem
             ou body
-        '429':
+        "429":
           description: Too Many Requests - Limite de requisições excedido
           headers:
             Retry-After:
@@ -263,80 +278,81 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '500':
+                $ref: "#/components/schemas/ProblemDetails"
+        "500":
           description: Internal Server Error - Erro inesperado da infraestrutura
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '503':
+                $ref: "#/components/schemas/ProblemDetails"
+        "503":
           description: Service Unavailable - Banco de dados offline ou limpo
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
+                $ref: "#/components/schemas/ProblemDetails"
       security:
-      - ApiKeyAdmin: []
+        - ApiKeyAdmin: []
   /api/v1/admin/overrides:
     get:
       tags:
-      - Admin
+        - Admin
       summary: Get Overrides
       operationId: get_overrides_api_v1_admin_overrides_get
       parameters:
-      - name: page
-        in: query
-        required: false
-        schema:
-          type: integer
-          minimum: 1
-          default: 1
-          title: Page
-      - name: size
-        in: query
-        required: false
-        schema:
-          type: integer
-          maximum: 100
-          minimum: 1
-          default: 20
-          title: Size
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+            title: Page
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            maximum: 100
+            minimum: 1
+            default: 20
+            title: Size
       responses:
-        '200':
+        "200":
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PaginatedOverrideResponse'
-        '400':
+                $ref: "#/components/schemas/PaginatedOverrideResponse"
+        "400":
           description: Bad Request
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '401':
+                $ref: "#/components/schemas/ProblemDetails"
+        "401":
           description: Unauthorized - Chave de API ausente ou inválida
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '403':
+                $ref: "#/components/schemas/ProblemDetails"
+        "403":
           description: Forbidden - Permissão insuficiente para a ação (ou acesso negado)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '409':
+                $ref: "#/components/schemas/ProblemDetails"
+        "409":
           description: Conflict - Conflito biométrico ou quebra de regras
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '422':
-          description: Unprocessable Entity - Falha na validação semântica da imagem
+                $ref: "#/components/schemas/ProblemDetails"
+        "422":
+          description:
+            Unprocessable Entity - Falha na validação semântica da imagem
             ou body
-        '429':
+        "429":
           description: Too Many Requests - Limite de requisições excedido
           headers:
             Retry-After:
@@ -354,78 +370,79 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '500':
+                $ref: "#/components/schemas/ProblemDetails"
+        "500":
           description: Internal Server Error - Erro inesperado da infraestrutura
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '503':
+                $ref: "#/components/schemas/ProblemDetails"
+        "503":
           description: Service Unavailable - Banco de dados offline ou limpo
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
+                $ref: "#/components/schemas/ProblemDetails"
       security:
-      - ApiKeyAdmin: []
+        - ApiKeyAdmin: []
     post:
       tags:
-      - Admin
+        - Admin
       summary: Create Override
       operationId: create_override_api_v1_admin_overrides_post
       parameters:
-      - name: Idempotency-Key
-        in: header
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: "null"
+            description: Chave UUID para evitar duplicidade em retentativas
+            title: Idempotency-Key
           description: Chave UUID para evitar duplicidade em retentativas
-          title: Idempotency-Key
-        description: Chave UUID para evitar duplicidade em retentativas
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/OverrideCreate'
+              $ref: "#/components/schemas/OverrideCreate"
       responses:
-        '201':
+        "201":
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OverrideResponse'
-        '400':
+                $ref: "#/components/schemas/OverrideResponse"
+        "400":
           description: Bad Request
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '401':
+                $ref: "#/components/schemas/ProblemDetails"
+        "401":
           description: Unauthorized - Chave de API ausente ou inválida
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '403':
+                $ref: "#/components/schemas/ProblemDetails"
+        "403":
           description: Forbidden - Permissão insuficiente para a ação (ou acesso negado)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '409':
+                $ref: "#/components/schemas/ProblemDetails"
+        "409":
           description: Conflict - Conflito biométrico ou quebra de regras
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '422':
-          description: Unprocessable Entity - Falha na validação semântica da imagem
+                $ref: "#/components/schemas/ProblemDetails"
+        "422":
+          description:
+            Unprocessable Entity - Falha na validação semântica da imagem
             ou body
-        '429':
+        "429":
           description: Too Many Requests - Limite de requisições excedido
           headers:
             Retry-After:
@@ -443,68 +460,69 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '500':
+                $ref: "#/components/schemas/ProblemDetails"
+        "500":
           description: Internal Server Error - Erro inesperado da infraestrutura
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '503':
+                $ref: "#/components/schemas/ProblemDetails"
+        "503":
           description: Service Unavailable - Banco de dados offline ou limpo
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
+                $ref: "#/components/schemas/ProblemDetails"
       security:
-      - ApiKeyAdmin: []
+        - ApiKeyAdmin: []
   /api/v1/admin/overrides/{id_override}:
     delete:
       tags:
-      - Admin
+        - Admin
       summary: Delete Override
       operationId: delete_override_api_v1_admin_overrides__id_override__delete
       parameters:
-      - name: id_override
-        in: path
-        required: true
-        schema:
-          type: integer
-          title: Id Override
+        - name: id_override
+          in: path
+          required: true
+          schema:
+            type: integer
+            title: Id Override
       responses:
-        '200':
+        "200":
           description: Successful Response
           content:
             application/json:
               schema: {}
-        '400':
+        "400":
           description: Bad Request
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '401':
+                $ref: "#/components/schemas/ProblemDetails"
+        "401":
           description: Unauthorized - Chave de API ausente ou inválida
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '403':
+                $ref: "#/components/schemas/ProblemDetails"
+        "403":
           description: Forbidden - Permissão insuficiente para a ação (ou acesso negado)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '409':
+                $ref: "#/components/schemas/ProblemDetails"
+        "409":
           description: Conflict - Conflito biométrico ou quebra de regras
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '422':
-          description: Unprocessable Entity - Falha na validação semântica da imagem
+                $ref: "#/components/schemas/ProblemDetails"
+        "422":
+          description:
+            Unprocessable Entity - Falha na validação semântica da imagem
             ou body
-        '429':
+        "429":
           description: Too Many Requests - Limite de requisições excedido
           headers:
             Retry-After:
@@ -522,79 +540,108 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '500':
+                $ref: "#/components/schemas/ProblemDetails"
+        "500":
           description: Internal Server Error - Erro inesperado da infraestrutura
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '503':
+                $ref: "#/components/schemas/ProblemDetails"
+        "503":
           description: Service Unavailable - Banco de dados offline ou limpo
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
+                $ref: "#/components/schemas/ProblemDetails"
       security:
-      - ApiKeyAdmin: []
+        - ApiKeyAdmin: []
   /api/v1/access/verify:
     post:
+      tags:
+        - Access
+      description:
+        API RESTful para controle de acesso facial e gestão de catracas.
+        ---
+
+        WebSocket — /ws/feed
+        Canal bidirecional em tempo real para telemetria de eventos de acesso.
+
+        **Conexão:** `ws://<host>/ws/feed?token=SEU_TOKEN_ADMIN`
+        **Autenticação:** query param `?token=` (limitação nativa de browsers WSS)
+        **Fechamento:** código 1008 (Policy Violation) para token inválido/ausente
+
+        Payload de evento recebido
+        ```json
+        {
+        "id" "evt-1717000000.0",
+        "id_dispositivo" 1,
+        "localizacao" "Portaria A",
+        "ocorrido_em" "2026-05-29T14:32:00",
+        "distancia_l2" 0.312,
+        "id_aluno" 42,
+        "nome_aluno" "João Silva",
+        "resultado" "LIBERADO",
+        "codigo_motivo" "ACESSO_OK"
+        }
+        ```
       summary: Verify Access
       operationId: verify_access_api_v1_access_verify_post
       parameters:
-      - name: X-Device-MAC
-        in: header
-        required: true
-        schema:
-          type: string
-          title: X-Device-Mac
+        - name: X-Device-MAC
+          in: header
+          required: true
+          schema:
+            type: string
+            title: X-Device-Mac
       requestBody:
         required: true
         content:
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/Body_verify_access_api_v1_access_verify_post'
+              $ref: "#/components/schemas/Body_verify_access_api_v1_access_verify_post"
       responses:
-        '200':
+        "200":
           description: Acesso Liberado com sucesso
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AcessoLiberado'
+                $ref: "#/components/schemas/AcessoLiberado"
           headers:
             X-Request-ID:
-              description: Token único para rastreabilidade de correlação entre logs
+              description:
+                Token único para rastreabilidade de correlação entre logs
                 e endpoints
               schema:
                 type: string
-        '400':
+        "400":
           description: Bad Request
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '401':
+                $ref: "#/components/schemas/ProblemDetails"
+        "401":
           description: Unauthorized - Chave de API ausente ou inválida
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '403':
+                $ref: "#/components/schemas/ProblemDetails"
+        "403":
           description: Forbidden - Permissão insuficiente para a ação (ou acesso negado)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '409':
+                $ref: "#/components/schemas/ProblemDetails"
+        "409":
           description: Conflict - Conflito biométrico ou quebra de regras
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '422':
-          description: Unprocessable Entity - Falha na validação semântica da imagem
+                $ref: "#/components/schemas/ProblemDetails"
+        "422":
+          description:
+            Unprocessable Entity - Falha na validação semântica da imagem
             ou body
-        '429':
+        "429":
           description: Too Many Requests - Limite de requisições excedido
           headers:
             Retry-After:
@@ -612,35 +659,35 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '500':
+                $ref: "#/components/schemas/ProblemDetails"
+        "500":
           description: Internal Server Error - Erro inesperado da infraestrutura
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '503':
+                $ref: "#/components/schemas/ProblemDetails"
+        "503":
           description: Service Unavailable - Banco de dados offline ou limpo
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
+                $ref: "#/components/schemas/ProblemDetails"
       security:
-      - ApiKeyDevice: []
+        - ApiKeyDevice: []
   /teste-identify:
     post:
       tags:
-      - Testes
+        - Testes
       summary: Identificar Acesso
       operationId: identificar_acesso_teste_identify_post
       deprecated: true
       parameters:
-      - name: X-Device-MAC
-        in: header
-        required: true
-        schema:
-          type: string
-          title: X-Device-Mac
+        - name: X-Device-MAC
+          in: header
+          required: true
+          schema:
+            type: string
+            title: X-Device-Mac
       requestBody:
         required: true
         content:
@@ -650,39 +697,40 @@ paths:
               additionalProperties: true
               title: Request
       responses:
-        '200':
+        "200":
           description: Successful Response
           content:
             application/json:
               schema: {}
-        '400':
+        "400":
           description: Bad Request
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '401':
+                $ref: "#/components/schemas/ProblemDetails"
+        "401":
           description: Unauthorized - Chave de API ausente ou inválida
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '403':
+                $ref: "#/components/schemas/ProblemDetails"
+        "403":
           description: Forbidden - Permissão insuficiente para a ação (ou acesso negado)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '409':
+                $ref: "#/components/schemas/ProblemDetails"
+        "409":
           description: Conflict - Conflito biométrico ou quebra de regras
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '422':
-          description: Unprocessable Entity - Falha na validação semântica da imagem
+                $ref: "#/components/schemas/ProblemDetails"
+        "422":
+          description:
+            Unprocessable Entity - Falha na validação semântica da imagem
             ou body
-        '429':
+        "429":
           description: Too Many Requests - Limite de requisições excedido
           headers:
             Retry-After:
@@ -700,159 +748,159 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '500':
+                $ref: "#/components/schemas/ProblemDetails"
+        "500":
           description: Internal Server Error - Erro inesperado da infraestrutura
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '503':
+                $ref: "#/components/schemas/ProblemDetails"
+        "503":
           description: Service Unavailable - Banco de dados offline ou limpo
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
+                $ref: "#/components/schemas/ProblemDetails"
       security:
-      - ApiKeyDevice: []
+        - ApiKeyDevice: []
   /teste-enroll:
     get:
       tags:
-      - Testes
+        - Testes
       summary: Test Enroll
       operationId: test_enroll_teste_enroll_get
       deprecated: true
       responses:
-        '200':
+        "200":
           description: Successful Response
           content:
             application/json:
               schema: {}
-        '422':
+        "422":
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: "#/components/schemas/HTTPValidationError"
       security:
-      - ApiKeyEnroll: []
+        - ApiKeyEnroll: []
   /teste-admin:
     get:
       tags:
-      - Testes
+        - Testes
       summary: Test Admin
       operationId: test_admin_teste_admin_get
       deprecated: true
       responses:
-        '200':
+        "200":
           description: Successful Response
           content:
             application/json:
               schema: {}
-        '422':
+        "422":
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: "#/components/schemas/HTTPValidationError"
       security:
-      - ApiKeyAdmin: []
+        - ApiKeyAdmin: []
   /teste-dispositivo:
     get:
       tags:
-      - Testes
+        - Testes
       summary: Test Device
       operationId: test_device_teste_dispositivo_get
       deprecated: true
       parameters:
-      - name: X-Device-MAC
-        in: header
-        required: true
-        schema:
-          type: string
-          title: X-Device-Mac
+        - name: X-Device-MAC
+          in: header
+          required: true
+          schema:
+            type: string
+            title: X-Device-Mac
       responses:
-        '200':
+        "200":
           description: Successful Response
           content:
             application/json:
               schema: {}
-        '422':
+        "422":
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: "#/components/schemas/HTTPValidationError"
       security:
-      - ApiKeyDevice: []
+        - ApiKeyDevice: []
   /teste-alunos:
     get:
       tags:
-      - Testes
+        - Testes
       summary: List Students
       operationId: list_students_teste_alunos_get
       responses:
-        '200':
+        "200":
           description: Successful Response
           content:
             application/json:
               schema:
                 items:
-                  $ref: '#/components/schemas/AlunoResponse'
+                  $ref: "#/components/schemas/AlunoResponse"
                 type: array
                 title: Response List Students Teste Alunos Get
       deprecated: true
   /teste-identify-with-image:
     post:
       tags:
-      - Testes
+        - Testes
       summary: Test Identify Image
       operationId: test_identify_image_teste_identify_with_image_post
       requestBody:
         content:
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/Body_test_identify_image_teste_identify_with_image_post'
+              $ref: "#/components/schemas/Body_test_identify_image_teste_identify_with_image_post"
         required: true
       responses:
-        '200':
+        "200":
           description: Successful Response
           content:
             application/json:
               schema: {}
-        '422':
+        "422":
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: "#/components/schemas/HTTPValidationError"
       deprecated: true
       security:
-      - ApiKeyDevice: []
+        - ApiKeyDevice: []
   /api/v1/access/teste:
     post:
       tags:
-      - Testes
+        - Testes
       summary: Teste Upload
       operationId: teste_upload_api_v1_access_teste_post
       requestBody:
         content:
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/Body_teste_upload_api_v1_access_teste_post'
+              $ref: "#/components/schemas/Body_teste_upload_api_v1_access_teste_post"
         required: true
       responses:
-        '200':
+        "200":
           description: Successful Response
           content:
             application/json:
               schema: {}
-        '422':
+        "422":
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: "#/components/schemas/HTTPValidationError"
       deprecated: true
 components:
   schemas:
@@ -873,13 +921,13 @@ components:
           title: Tipo Vinculo
       type: object
       required:
-      - nome
-      - matricula
-      - tipo_vinculo
+        - nome
+        - matricula
+        - tipo_vinculo
       title: AcessoLiberado
-      description: 'Resposta HTTP 200 do POST /access/verify.
+      description: "Resposta HTTP 200 do POST /access/verify.
 
-        O ESP32 usa o status 200 para acionar o relé imediatamente.'
+        O ESP32 usa o status 200 para acionar o relé imediatamente."
     AlunoEmOverride:
       properties:
         id_aluno:
@@ -893,11 +941,12 @@ components:
           title: Matricula
       type: object
       required:
-      - id_aluno
-      - nome_completo
-      - matricula
+        - id_aluno
+        - nome_completo
+        - matricula
       title: AlunoEmOverride
-      description: Subconjunto do aluno embutido na resposta de override (evita expor
+      description:
+        Subconjunto do aluno embutido na resposta de override (evita expor
         vetor biométrico).
     AlunoEnrollado:
       properties:
@@ -916,13 +965,13 @@ components:
           default: Aluno cadastrado com sucesso. Vetor facial indexado no banco.
       type: object
       required:
-      - id_aluno
-      - matricula
-      - nome_completo
+        - id_aluno
+        - matricula
+        - nome_completo
       title: AlunoEnrollado
-      description: 'Resposta de sucesso do POST /access/enroll (HTTP 201).
+      description: "Resposta de sucesso do POST /access/enroll (HTTP 201).
 
-        Contém apenas o necessário para o app confirmar o cadastro.'
+        Contém apenas o necessário para o app confirmar o cadastro."
     AlunoResponse:
       properties:
         matricula:
@@ -939,11 +988,11 @@ components:
           maxLength: 100
           title: Curso
         tipo_vinculo:
-          $ref: '#/components/schemas/TipoVinculoEnum'
+          $ref: "#/components/schemas/TipoVinculoEnum"
         turno:
-          $ref: '#/components/schemas/TurnoEnum'
+          $ref: "#/components/schemas/TurnoEnum"
         status_acesso:
-          $ref: '#/components/schemas/StatusAcessoEnum'
+          $ref: "#/components/schemas/StatusAcessoEnum"
           default: ATIVO
         id_aluno:
           type: integer
@@ -954,13 +1003,13 @@ components:
           title: Criado Em
       type: object
       required:
-      - matricula
-      - nome_completo
-      - curso
-      - tipo_vinculo
-      - turno
-      - id_aluno
-      - criado_em
+        - matricula
+        - nome_completo
+        - curso
+        - tipo_vinculo
+        - turno
+        - id_aluno
+        - criado_em
       title: AlunoResponse
     Body_enroll_student_api_v1_access_enroll_post:
       properties:
@@ -974,9 +1023,9 @@ components:
           type: string
           title: Curso
         tipo_vinculo:
-          $ref: '#/components/schemas/TipoVinculoEnum'
+          $ref: "#/components/schemas/TipoVinculoEnum"
         turno:
-          $ref: '#/components/schemas/TurnoEnum'
+          $ref: "#/components/schemas/TurnoEnum"
         foto:
           type: string
           contentMediaType: image/jpeg, image/jpg
@@ -984,12 +1033,12 @@ components:
           description: Imagem facial (JPEG) obrigatória. Resolução preferencial SVGA.
       type: object
       required:
-      - matricula
-      - nome_completo
-      - curso
-      - tipo_vinculo
-      - turno
-      - foto
+        - matricula
+        - nome_completo
+        - curso
+        - tipo_vinculo
+        - turno
+        - foto
       title: Body_enroll_student_api_v1_access_enroll_post
     Body_test_identify_image_teste_identify_with_image_post:
       properties:
@@ -1000,7 +1049,7 @@ components:
           description: Imagem facial (JPEG) obrigatória. Resolução preferencial SVGA.
       type: object
       required:
-      - foto
+        - foto
       title: Body_test_identify_image_teste_identify_with_image_post
     Body_teste_upload_api_v1_access_teste_post:
       properties:
@@ -1011,7 +1060,7 @@ components:
           description: Imagem facial (JPEG) obrigatória. Resolução preferencial SVGA.
       type: object
       required:
-      - foto
+        - foto
       title: Body_teste_upload_api_v1_access_teste_post
     Body_verify_access_api_v1_access_verify_post:
       properties:
@@ -1022,7 +1071,7 @@ components:
           description: Imagem facial (JPEG) obrigatória. Resolução preferencial SVGA.
       type: object
       required:
-      - foto
+        - foto
       title: Body_verify_access_api_v1_access_verify_post
     DeviceResponse:
       properties:
@@ -1040,34 +1089,34 @@ components:
           description: Localização descritiva da catraca
         bloco:
           anyOf:
-          - type: string
-          - type: 'null'
+            - type: string
+            - type: "null"
           title: Bloco
           description: Bloco físico associado
         ultima_atividade:
           anyOf:
-          - type: string
-            format: date-time
-          - type: 'null'
+            - type: string
+              format: date-time
+            - type: "null"
           title: Ultima Atividade
           description: Timestamp da última atividade
         status_bateria:
           anyOf:
-          - type: string
-          - type: 'null'
+            - type: string
+            - type: "null"
           title: Status Bateria
           description: Status da bateria ou alimentação
       type: object
       required:
-      - id_dispositivo
-      - mac_address
-      - localizacao
+        - id_dispositivo
+        - mac_address
+        - localizacao
       title: DeviceResponse
     HTTPValidationError:
       properties:
         detail:
           items:
-            $ref: '#/components/schemas/ValidationError'
+            $ref: "#/components/schemas/ValidationError"
           type: array
           title: Detail
       type: object
@@ -1085,7 +1134,7 @@ components:
           description: Timestamp ISO do momento
       type: object
       required:
-      - timestamp
+        - timestamp
       title: HealthzResponse
     OverrideCreate:
       properties:
@@ -1104,10 +1153,10 @@ components:
           title: Motivo
       type: object
       required:
-      - matricula
-      - bloco
-      - tipo_override
-      - motivo
+        - matricula
+        - bloco
+        - tipo_override
+        - motivo
       title: OverrideCreate
     OverrideResponse:
       properties:
@@ -1125,8 +1174,8 @@ components:
           title: Tipo Override
         motivo:
           anyOf:
-          - type: string
-          - type: 'null'
+            - type: string
+            - type: "null"
           title: Motivo
         criado_em:
           type: string
@@ -1134,21 +1183,21 @@ components:
           title: Criado Em
         aluno:
           anyOf:
-          - $ref: '#/components/schemas/AlunoEmOverride'
-          - type: 'null'
+            - $ref: "#/components/schemas/AlunoEmOverride"
+            - type: "null"
       type: object
       required:
-      - id_override
-      - id_aluno
-      - bloco
-      - tipo_override
-      - criado_em
+        - id_override
+        - id_aluno
+        - bloco
+        - tipo_override
+        - criado_em
       title: OverrideResponse
     PaginatedDeviceResponse:
       properties:
         data:
           items:
-            $ref: '#/components/schemas/DeviceResponse'
+            $ref: "#/components/schemas/DeviceResponse"
           type: array
           title: Data
         total:
@@ -1165,17 +1214,17 @@ components:
           title: Pages
       type: object
       required:
-      - data
-      - total
-      - page
-      - size
-      - pages
+        - data
+        - total
+        - page
+        - size
+        - pages
       title: PaginatedDeviceResponse
     PaginatedOverrideResponse:
       properties:
         data:
           items:
-            $ref: '#/components/schemas/OverrideResponse'
+            $ref: "#/components/schemas/OverrideResponse"
           type: array
           title: Data
         total:
@@ -1192,11 +1241,11 @@ components:
           title: Pages
       type: object
       required:
-      - data
-      - total
-      - page
-      - size
-      - pages
+        - data
+        - total
+        - page
+        - size
+        - pages
       title: PaginatedOverrideResponse
     ProblemDetails:
       properties:
@@ -1215,20 +1264,20 @@ components:
           description: O código de status HTTP
         detail:
           anyOf:
-          - type: string
-          - type: 'null'
+            - type: string
+            - type: "null"
           title: Detail
           description: Explicação legível por humanos sobre esta ocorrência do problema
         instance:
           anyOf:
-          - type: string
-          - type: 'null'
+            - type: string
+            - type: "null"
           title: Instance
           description: Referência URI que identifica a ocorrência específica do problema
       type: object
       required:
-      - title
-      - status
+        - title
+        - status
       title: ProblemDetails
     ReadyzResponse:
       properties:
@@ -1242,38 +1291,38 @@ components:
           description: Status da dependência de banco de dados
       type: object
       required:
-      - status
-      - database
+        - status
+        - database
       title: ReadyzResponse
     StatusAcessoEnum:
       type: string
       enum:
-      - ATIVO
-      - BLOQUEADO
+        - ATIVO
+        - BLOQUEADO
       title: StatusAcessoEnum
     TipoVinculoEnum:
       type: string
       enum:
-      - GRADUACAO
-      - POS_GRADUACAO
-      - PROFESSOR
-      - FUNCIONARIO
+        - GRADUACAO
+        - POS_GRADUACAO
+        - PROFESSOR
+        - FUNCIONARIO
       title: TipoVinculoEnum
     TurnoEnum:
       type: string
       enum:
-      - MANHA
-      - TARDE
-      - NOITE
-      - INTEGRAL
+        - MANHA
+        - TARDE
+        - NOITE
+        - INTEGRAL
       title: TurnoEnum
     ValidationError:
       properties:
         loc:
           items:
             anyOf:
-            - type: string
-            - type: integer
+              - type: string
+              - type: integer
           type: array
           title: Location
         msg:
@@ -1289,9 +1338,9 @@ components:
           title: Context
       type: object
       required:
-      - loc
-      - msg
-      - type
+        - loc
+        - msg
+        - type
       title: ValidationError
   securitySchemes:
     ApiKeyDevice:
